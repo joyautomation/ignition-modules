@@ -9,6 +9,9 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
 
 - `scripts/dev-up.sh --fresh`: dev gateway + broker + modules + seeded config, from nothing.
 - `scripts/install-module.sh mantle`: rebuild and reload after a change.
+- `scripts/demo.sh` / `--stop`: edge nodes publishing into the dev gateway, for looking at the status page.
+  It stops only what it started (recorded PIDs, plus a sweep scoped to its own directory): **other `nautilus`
+  processes on this machine belong to the user — never kill by name.**
 - `cd integration && go test ./...` (`-short` skips the container-restarting ones). Needs the dev stack up.
   Run it after any change to `HostState`, `ManagedTagSink` or `BrokerConnection`: it has caught bugs the unit
   tests structurally cannot.

@@ -15,6 +15,7 @@ Modules for Inductive Automation's Ignition (8.3+), built to carry
 ```sh
 scripts/dev-up.sh --fresh        # gateway (localhost:8088, admin/password) + mosquitto + modules + dev config
 scripts/install-module.sh mantle   # rebuild one module and reload it
+scripts/demo.sh                    # three Nautilus edge nodes publishing into it, to look at
 (cd integration && go test ./...)  # ~90 s; -short for ~12 s
 ```
 

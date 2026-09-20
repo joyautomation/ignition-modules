@@ -40,3 +40,19 @@ seed_project() {
     docker compose cp "$src" "gateway:$dir/$name" >/dev/null
     docker compose exec -T -u root gateway chown -R ignition:ignition "$dir/$name"
 }
+
+# build_nautilus prints the path to a nautilus binary built from the checkout beside this repo, building it
+# only when the source is newer. Falls back to whatever is on PATH.
+build_nautilus() {
+    local src="${NAUTILUS_SRC:-$(cd .. && pwd)/nautilus}" bin="$PWD/integration/.run/nautilus"
+    if [ -d "$src/cmd/nautilus" ]; then
+        mkdir -p "$(dirname "$bin")"
+        (cd "$src" && go build -o "$bin" ./cmd/nautilus) >&2 || { echo "could not build nautilus" >&2; return 1; }
+        echo "$bin"
+    elif command -v nautilus >/dev/null; then
+        command -v nautilus
+    else
+        echo "no nautilus source at $src and none on PATH" >&2
+        return 1
+    fi
+}
