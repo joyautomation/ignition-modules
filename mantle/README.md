@@ -115,7 +115,7 @@ change on write; it changes when the edge reports it. Writes to an offline node 
 
 ## Status
 
-The gateway's web UI gets a **Mantle** page under Diagnostics: every connection, whether it is connected, the
+The gateway's web UI gets a **Mantle** page at Diagnostics → Mantle → Sparkplug: every connection, whether it is connected, the
 nodes and devices under it with their last birth, and the four numbers worth watching — messages, sequence gaps,
 rebirths requested, and decode failures. Gaps and decode failures both mean data was lost between the edge and
 the gateway, and both should sit at zero on a healthy link. Each node has a **Request rebirth** button.
@@ -161,7 +161,9 @@ off. (The Nautilus edge sends none of these, so the suite can't cover them yet.)
 **By unit test only** (`HostStateTest` and `StatusRoutesTest`, 25 cases): reordering, duplicate drop, gap expiry, seq wrap at 256, rebirth
 debounce, stale-NDEATH rejection, host-stamped deaths, two-phase births, group filtering, unsigned widening.
 
-**Not yet exercised**: TLS, WebSocket and authenticated brokers; devices (DBIRTH/DDEATH) from a real edge; an
+**Not yet exercised**: the status page rendering in a browser (its registration, its bundle being served and
+both routes refusing anonymous callers are tested, but nobody has looked at the page itself — that needs a
+logged-in gateway session); TLS, WebSocket and authenticated brokers; devices (DBIRTH/DDEATH) from a real edge; an
 edge with a badly skewed clock; a real Designer session editing a tag (the suite uses `system.tag.configure`, the
 scripted equivalent); Ignition Transmission or tentacle as the edge; load.
 

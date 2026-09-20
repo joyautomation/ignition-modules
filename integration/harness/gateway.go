@@ -235,6 +235,45 @@ func (g *Gateway) Delete(rel ...string) error {
 	return g.call(map[string]any{"op": "delete", "paths": paths}, &out)
 }
 
+// NavPage is one page in the gateway's own navigation menu.
+type NavPage struct {
+	Section    string
+	Category   string
+	Label      string
+	URL        string
+	Permission string
+}
+
+// Nav reads the gateway's navigation model from inside the gateway. A module's page being registered is
+// otherwise only visible to a logged-in browser, which a test cannot be.
+func (g *Gateway) Nav() ([]NavPage, error) {
+	var out struct {
+		Sections []struct {
+			Label      string `json:"label"`
+			Categories []struct {
+				Label string `json:"label"`
+				Pages []struct {
+					Label      string `json:"label"`
+					URL        string `json:"url"`
+					Permission string `json:"permission"`
+				} `json:"pages"`
+			} `json:"categories"`
+		} `json:"sections"`
+	}
+	if err := g.call(map[string]any{"op": "nav"}, &out); err != nil {
+		return nil, err
+	}
+	var pages []NavPage
+	for _, s := range out.Sections {
+		for _, c := range s.Categories {
+			for _, p := range c.Pages {
+				pages = append(pages, NavPage{s.Label, c.Label, p.Label, p.URL, p.Permission})
+			}
+		}
+	}
+	return pages, nil
+}
+
 // History returns the raw stored samples for one tag in [start, end].
 func (g *Gateway) History(rel string, start, end time.Time) ([]HistoryRow, error) {
 	var out struct {

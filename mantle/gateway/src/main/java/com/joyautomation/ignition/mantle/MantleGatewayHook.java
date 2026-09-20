@@ -146,7 +146,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
                     .title("Mantle — Sparkplug status")
                     .requiredPermission(PermissionType.READ)
                     // "MantleStatus" is the named export of the UMD bundle
-                    .mount("/mantle-status", "MantleStatus", bundle)));
+                    .mount("/diagnostics/mantle-status", "MantleStatus", bundle)));
     }
 
     /** Where the status page's bundle is served from: /res/mantle/<file>, out of the jar's "mounted" folder. */

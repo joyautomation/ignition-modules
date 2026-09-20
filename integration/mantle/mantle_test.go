@@ -10,6 +10,7 @@ package mantle
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -274,6 +275,45 @@ func TestIntegersAndStringsSurviveTheTrip(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// ── the status page ──────────────────────────────────────────────────────
+
+// The page itself can only be seen by a logged-in browser, but its two halves can be checked here: that the
+// gateway has it in its navigation, and that its data route is mounted and refuses an anonymous caller.
+func TestTheStatusPageIsRegisteredAndItsRouteIsProtected(t *testing.T) {
+	pages, err := gw.Nav()
+	must(t, err)
+
+	var page *harness.NavPage
+	for i := range pages {
+		if pages[i].Category == "Mantle" {
+			page = &pages[i]
+		}
+	}
+	if page == nil {
+		t.Fatalf("no Mantle page in the gateway's navigation; have %v", pages)
+	}
+	if page.Section != "Diagnostics" {
+		t.Errorf("Mantle page is under %q, want Diagnostics", page.Section)
+	}
+	if page.URL != "/diagnostics/mantle-status" {
+		t.Errorf("Mantle page url = %q", page.URL)
+	}
+	if page.Permission != "READ" {
+		t.Errorf("Mantle page permission = %q, want READ", page.Permission)
+	}
+
+	// the bundle the page is, and the data it reads
+	if code := getStatus(t, "/res/mantle/mantleStatus.js"); code != 200 {
+		t.Errorf("the page's bundle is not being served: HTTP %d", code)
+	}
+	if code := getStatus(t, "/data/mantle/status"); code != 401 {
+		t.Errorf("anonymous GET /data/mantle/status = %d, want 401", code)
+	}
+	if code := postStatus(t, "/data/mantle/rebirth/Plant/Edge1"); code != 401 {
+		t.Errorf("anonymous POST to the rebirth route = %d, want 401", code)
+	}
 }
 
 // ── the promise: one set of tags ─────────────────────────────────────────
@@ -559,6 +599,23 @@ func restartGateway(t *testing.T) {
 	t.Helper()
 	compose(t, "restart", "gateway")
 	eventually(t, 3*time.Minute, gw.Ping)
+}
+
+// getStatus is a deliberately unauthenticated request: these routes must refuse one.
+func getStatus(t *testing.T, path string) int {
+	t.Helper()
+	resp, err := http.Get(gw.URL + path)
+	must(t, err)
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+func postStatus(t *testing.T, path string) int {
+	t.Helper()
+	resp, err := http.Post(gw.URL+path, "application/json", nil)
+	must(t, err)
+	defer resp.Body.Close()
+	return resp.StatusCode
 }
 
 func compose(t *testing.T, args ...string) {

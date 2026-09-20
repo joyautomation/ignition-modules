@@ -34,6 +34,27 @@ def doPost(request, session):
 			'timestamp': ts.getTime() if ts is not None else None,
 		}
 
+	if op == 'nav':
+		# Reads the gateway's own navigation model from inside the gateway, so a module's registered page can be
+		# verified without a browser session. Test support only.
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		model = IgnitionGateway.get().getWebResourceManager().getNavigationModel()
+		sections = []
+		for section in model.getSections():
+			categories = []
+			for category in section.getCategories():
+				pages = []
+				for page in category.pages():
+					mount = page.mount()
+					pages.append({
+						'label': str(page.label()),
+						'url': str(mount.url()) if mount is not None else None,
+						'permission': str(page.requiredPermission()),
+					})
+				categories.append({'key': str(category.key()), 'label': str(category.label()), 'pages': pages})
+			sections.append({'label': str(section.getLabel()), 'categories': categories})
+		return {'json': {'sections': sections}}
+
 	if op == 'ping':
 		return {'json': {'ok': True, 'time': system.date.now().getTime()}}
 
