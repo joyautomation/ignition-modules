@@ -16,7 +16,7 @@ Modules for Inductive Automation's Ignition (8.3+), built to carry
 scripts/dev-up.sh --fresh        # gateway (localhost:8088, admin/password) + mosquitto + modules + dev config
 scripts/install-module.sh mantle   # rebuild one module and reload it
 scripts/demo.sh                    # three Nautilus edge nodes publishing into it, to look at
-scripts/keep-trial-alive.sh        # reset the gateway's two-hour trial, for a demo left running
+scripts/keep-trial-alive.sh --install-cron   # keep the gateway's two-hour trial alive, for a demo left running
 (cd integration && go test ./...)  # ~90 s; -short for ~12 s
 ```
 

@@ -11,10 +11,12 @@
 #   export IGNITION_API_TOKEN=...                       # for one shell
 #   echo 'IGNITION_API_TOKEN=...' > .env.trial          # for cron; gitignored
 #
-# To run it from cron:
+# To run it from cron — and then CHECK IT FIRED, because an entry nobody installed looks exactly like one that
+# is working until the gateway expires:
 #
-#   crontab -e
-#   */5 * * * * cd /path/to/ignition && scripts/keep-trial-alive.sh >> /tmp/ignition-trial.log 2>&1
+#   scripts/keep-trial-alive.sh --install-cron
+#   crontab -l                      # the entry is there
+#   tail -f /tmp/ignition-trial.log # it logs every five minutes, even when there is nothing to do
 #
 # Every five minutes, because the gateway REFUSES to reset a trial that still has time on it (the route answers
 # 403 unless getDemoTimeRemaining() is 0). So this is a no-op almost every run, and resets promptly on the one
@@ -44,6 +46,24 @@ before="$(left)"
 if [ "$before" -lt 0 ]; then
     echo "$(date -Is) the gateway at $gateway is not answering"
     exit 1
+fi
+
+if [ "${1:-}" = "--install-cron" ]; then
+    line="*/5 * * * * cd $root && scripts/keep-trial-alive.sh >> /tmp/ignition-trial.log 2>&1"
+    if crontab -l 2>/dev/null | grep -qF "keep-trial-alive.sh"; then
+        echo "already in the crontab:"
+        crontab -l | grep -F "keep-trial-alive.sh"
+    else
+        { crontab -l 2>/dev/null
+          echo "# Mantle dev gateway: reset Ignition's trial as soon as it lapses (a no-op while time remains)"
+          echo "$line"; } | crontab -
+        echo "installed: $line"
+    fi
+    command -v systemctl >/dev/null && ! systemctl is-active --quiet cron 2>/dev/null \
+        && ! systemctl is-active --quiet crond 2>/dev/null \
+        && echo "warning: no cron daemon appears to be running, so it will never fire" >&2
+    echo "it logs to /tmp/ignition-trial.log every five minutes; check there in a few minutes"
+    exit 0
 fi
 
 if [ "${1:-}" = "--status" ]; then

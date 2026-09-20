@@ -78,6 +78,10 @@ and `sourcing.md` first. Rules specific to this project:
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 
+- **The dev gateway's trial expires after two hours** and takes WebDev, the historian and the test API with it,
+  so the integration suite hangs in its startup retry. `scripts/keep-trial-alive.sh --install-cron` handles it;
+  the gateway only permits a reset once the trial has actually lapsed, so the job is a no-op until then.
+
 ## Conventions
 
 - Protocol logic stays free of Ignition and MQTT types (`sparkplug/HostState` behind `TagSink` and `Outbound`)
