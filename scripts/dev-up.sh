@@ -33,7 +33,7 @@ docker compose start
 wait_for_gateway
 
 seed_config com.inductiveautomation.historian/historian-provider Core dev/config/core-historian
-seed_config com.joyautomation.mantle/broker-connection dev-broker dev/config/mantle/dev-broker
+seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker
 # what the integration tests observe the gateway through; it requires an Administrator login
 seed_project integration-api integration/gateway-project/integration-api
 # config resources are read at startup

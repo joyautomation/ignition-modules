@@ -4,8 +4,7 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.inductiveautomation.ignition.common.resourcecollection.ResourceType;
-import com.inductiveautomation.ignition.gateway.config.ResourceTypeMeta;
+import com.inductiveautomation.ignition.gateway.config.ValidationErrors;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.DefaultValue;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.Description;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.FormCategory;
@@ -14,11 +13,11 @@ import com.inductiveautomation.ignition.gateway.web.nav.FormFieldType;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.Label;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.Required;
 import com.inductiveautomation.ignition.gateway.secrets.SecretConfig;
-import com.joyautomation.ignition.mantle.MantleGatewayHook;
 
 /**
- * One Sparkplug B host application connection to one broker. Name, enabled and description come from the resource
- * system and are not repeated here.
+ * One Sparkplug B host application connection to one broker: the settings half of the MQTT connection type
+ * (see {@link MqttConnectionExtensionPoint}). Name, enabled and description come from the resource system and
+ * are not repeated here. Every annotation below is a field in the gateway's configuration form.
  * <p>
  * The defaults are the point: a broker URL is the only thing that has to be filled in. Everything the broker says
  * becomes tags, and those tags are historized.
@@ -98,24 +97,17 @@ public record BrokerConnectionConfig(
     @Description("Historian to store to. Leave blank to use the gateway's first available historian.")
     String historyProvider
 ) {
-    public static final ResourceType TYPE = new ResourceType(MantleGatewayHook.MODULE_ID, "broker-connection");
-
     public static final BrokerConnectionConfig DEFAULT = new BrokerConnectionConfig(
         "tcp://localhost:1883", null, null, null, 30, null, null, 5000, "Sparkplug", true, null);
 
-    public static final ResourceTypeMeta<BrokerConnectionConfig> META =
-        ResourceTypeMeta.newBuilder(BrokerConnectionConfig.class)
-            .resourceType(TYPE)
-            .categoryName("Sparkplug Broker Connections")
-            .defaultConfig(DEFAULT)
-            .buildValidator((config, validator) -> {
-                validator.checkField(config.brokerUrl() != null && config.brokerUrl()
-                        .matches("^(tcp|mqtt|ssl|tls|mqtts|ws|wss)://[^\\s/:]+(:\\d+)?(/.*)?$"),
-                    "brokerUrl", "must look like tcp://host:1883, ssl://host:8883, ws://host/path or wss://host/path");
-                validator.checkField(config.tagProvider() != null && !config.tagProvider().isBlank(),
-                    "tagProvider", "is required");
-            })
-            .build();
+    /** Called by the extension point when the gateway validates an edit. */
+    public static void validate(BrokerConnectionConfig config, ValidationErrors.Builder validator) {
+        validator.checkField(config.brokerUrl() != null && config.brokerUrl()
+                .matches("^(tcp|mqtt|ssl|tls|mqtts|ws|wss)://[^\\s/:]+(:\\d+)?(/.*)?$"),
+            "brokerUrl", "must look like tcp://host:1883, ssl://host:8883, ws://host/path or wss://host/path");
+        validator.checkField(config.tagProvider() != null && !config.tagProvider().isBlank(),
+            "tagProvider", "is required");
+    }
 
     public Set<String> groupIdSet() {
         if (groupIds == null || groupIds.isBlank()) {

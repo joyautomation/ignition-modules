@@ -285,14 +285,24 @@ func TestTheStatusPageIsRegisteredAndItsRouteIsProtected(t *testing.T) {
 	pages, err := gw.Nav()
 	must(t, err)
 
-	var page *harness.NavPage
+	var page, connections *harness.NavPage
 	for i := range pages {
-		if pages[i].Category == "Mantle" {
+		switch {
+		case pages[i].Category == "Mantle":
 			page = &pages[i]
+		case pages[i].URL == "/connections/sparkplug":
+			connections = &pages[i]
 		}
 	}
 	if page == nil {
 		t.Fatalf("no Mantle page in the gateway's navigation; have %v", pages)
+	}
+	// Without this page a connection can only be created by editing a file on disk, which is the opposite of
+	// what this module is for.
+	if connections == nil {
+		t.Errorf("no Sparkplug connections page in the gateway's navigation; have %v", pages)
+	} else if connections.Section != "Connections" {
+		t.Errorf("the connections page is under %q, want Connections", connections.Section)
 	}
 	if page.Section != "Diagnostics" {
 		t.Errorf("Mantle page is under %q, want Diagnostics", page.Section)

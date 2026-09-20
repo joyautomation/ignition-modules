@@ -85,6 +85,14 @@ def doPost(request, session):
 			})
 		return {'json': {'modules': out}}
 
+	if op == 'resourcetypes':
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		reg = IgnitionGateway.get().getConfigurationManager().getResourceTypeMetaRegistry()
+		out = []
+		for meta in reg.getAllTypes():
+			out.append(str(meta.getResourceType()))
+		return {'json': {'types': sorted(out)}}
+
 	if op == 'ping':
 		return {'json': {'ok': True, 'time': system.date.now().getTime()}}
 

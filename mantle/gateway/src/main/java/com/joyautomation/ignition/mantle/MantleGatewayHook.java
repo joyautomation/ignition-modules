@@ -10,6 +10,8 @@ import java.util.function.BiPredicate;
 import com.inductiveautomation.ignition.common.licensing.LicenseState;
 import com.inductiveautomation.ignition.common.resourcecollection.ResourceType;
 import com.inductiveautomation.ignition.gateway.config.DecodedResource;
+import com.inductiveautomation.ignition.gateway.config.ExtensionPoint;
+import com.inductiveautomation.ignition.gateway.config.ExtensionPointConfig;
 import com.inductiveautomation.ignition.gateway.config.NamedResourceHandler;
 import com.inductiveautomation.ignition.gateway.dataroutes.HttpMethod;
 import com.inductiveautomation.ignition.gateway.dataroutes.PermissionType;
@@ -21,6 +23,9 @@ import com.inductiveautomation.ignition.gateway.secrets.Secret;
 import com.inductiveautomation.ignition.gateway.web.nav.NavigationModel;
 import com.inductiveautomation.ignition.gateway.web.systemjs.SystemJsModule;
 import com.joyautomation.ignition.mantle.config.BrokerConnectionConfig;
+import com.joyautomation.ignition.mantle.config.MqttConnectionExtensionPoint;
+import com.joyautomation.ignition.mantle.config.SparkplugConnectionProfile;
+import com.joyautomation.ignition.mantle.config.SparkplugConnections;
 import com.joyautomation.ignition.mantle.mqtt.BrokerConnection;
 import com.joyautomation.ignition.mantle.status.ModuleStatus;
 import com.joyautomation.ignition.mantle.status.StatusRoutes;
@@ -41,7 +46,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
     }
 
     private GatewayContext context;
-    private NamedResourceHandler<BrokerConnectionConfig> connections;
+    private NamedResourceHandler<ExtensionPointConfig<SparkplugConnectionProfile, ?>> connections;
 
     private final Object lock = new Object();
     private final Map<String, Running> running = new HashMap<>();
@@ -51,8 +56,12 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
     @Override
     public void setup(GatewayContext context) {
         this.context = context;
+        // Tell the gateway this resource type exists. Without it the type is invisible to the configuration
+        // REST API — and so to any UI built on it — and connections can only be created by editing files.
+        context.getConfigurationManager().getResourceTypeMetaRegistry().register(SparkplugConnections.meta());
         registerStatusPage(context);
-        connections = NamedResourceHandler.newBuilder(BrokerConnectionConfig.META)
+        registerConnectionsPage(context);
+        connections = NamedResourceHandler.newBuilder(SparkplugConnections.meta())
             .context(context)
             .onInitialResources(resources -> resources.forEach(this::startConnection))
             .onResourceAdded(this::startConnection)
@@ -83,13 +92,16 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         logger.info("Mantle module stopped.");
     }
 
-    private void startConnection(DecodedResource<BrokerConnectionConfig> resource) {
+    private void startConnection(DecodedResource<ExtensionPointConfig<SparkplugConnectionProfile, ?>> resource) {
         String name = resource.name();
         if (!resource.enabled()) {
-            logger.info("Broker connection '{}' is disabled.", name);
+            logger.info("Connection '{}' is disabled.", name);
             return;
         }
-        BrokerConnectionConfig config = resource.config();
+        if (!(resource.config().settings().orElse(null) instanceof BrokerConnectionConfig config)) {
+            logger.warn("Connection '{}' has no MQTT settings; it will not start.", name);
+            return;
+        }
         synchronized (lock) {
             try {
                 ManagedTagSink sink = sinks.computeIfAbsent(config.tagProvider().trim(), provider ->
@@ -143,6 +155,21 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
      * Puts a Mantle page in the gateway's own navigation, under Diagnostics — which is where an administrator
      * looks when they want to know whether something is working, and this page answers exactly that.
      */
+    /**
+     * The page where connections are added and edited. The form is the extension point's, generated from the
+     * annotations on the settings record — so this is the whole of the configuration UI.
+     */
+    private void registerConnectionsPage(GatewayContext context) {
+        new MqttConnectionExtensionPoint().getWebUiComponent(ExtensionPoint.ComponentType.EDIT_FORM)
+            .ifPresent(form -> context.getWebResourceManager().getNavigationModel().getConnections()
+                .addCategory("mantle", category -> category
+                    .label("Sparkplug")
+                    .addPage("Connections", page -> page
+                        .title("Sparkplug Connections")
+                        .requiredPermission(PermissionType.READ)
+                        .mount("/connections/sparkplug", form))));
+    }
+
     private void registerStatusPage(GatewayContext context) {
         SystemJsModule bundle = new SystemJsModule(MODULE_ID, "/res/mantle/mantleStatus.js");
         context.getWebResourceManager().getNavigationModel().getDiagnostics()
@@ -248,6 +275,11 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         synchronized (lock) {
             return running.values().stream().map(Running::connection).toList();
         }
+    }
+
+    @Override
+    public List<? extends ExtensionPoint<?>> getExtensionPoints() {
+        return SparkplugConnections.INSTANCE.getTypes();
     }
 
     @Override

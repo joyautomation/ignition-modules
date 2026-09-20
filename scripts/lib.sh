@@ -58,7 +58,7 @@ wait_for_gateway() {
 }
 
 # seed_config <resource-type-path> <name> <source-dir>
-#   e.g. seed_config com.joyautomation.mantle/broker-connection dev-broker dev/config/mantle/dev-broker
+#   e.g. seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker
 seed_config() {
     local type="$1" name="$2" src="$3"
     docker compose exec -T gateway mkdir -p "$gateway_config_dir/$type"

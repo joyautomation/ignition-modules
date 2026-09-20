@@ -1,8 +1,13 @@
 {
-  "brokerUrl": "tcp://broker:1883",
-  "keepAliveSeconds": 30,
-  "hostId": "joy-dev",
-  "reorderTimeoutMs": 5000,
-  "tagProvider": "Sparkplug",
-  "historizeByDefault": true
+  "profile": {
+    "type": "MQTT"
+  },
+  "settings": {
+    "brokerUrl": "tcp://broker:1883",
+    "keepAliveSeconds": 30,
+    "hostId": "joy-dev",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "Sparkplug",
+    "historizeByDefault": true
+  }
 }
