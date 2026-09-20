@@ -124,6 +124,11 @@ the gateway, and both should sit at zero on a healthy link. Each node has a **Re
 token, read from `/data/app/session` — the same endpoint the gateway's own web app reads it from. It reports
 what happened rather than failing silently.
 
+When the gateway has **no tag historian**, nothing is being recorded and the page says so in as many words,
+with a link straight to the gateway's historian page. Add one and history switches itself on as each node births
+again — no tag needs touching. The link is resolved from the gateway's own navigation model, and checked against
+it before being offered, so it cannot become a dead link.
+
 The same data is JSON at `GET /data/mantle/status`, and a rebirth is `POST /data/mantle/rebirth/<group>/<edge>`.
 Both take any authenticated gateway identity — the web UI's own session, or an
 [API token](https://www.docs.inductiveautomation.com/docs/8.3/platform/security/api-keys) for a monitoring

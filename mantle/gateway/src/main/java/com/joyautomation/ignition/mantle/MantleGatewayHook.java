@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.function.BiPredicate;
 
 import com.inductiveautomation.ignition.common.licensing.LicenseState;
+import com.inductiveautomation.ignition.common.resourcecollection.ResourceType;
 import com.inductiveautomation.ignition.gateway.config.DecodedResource;
 import com.inductiveautomation.ignition.gateway.config.NamedResourceHandler;
 import com.inductiveautomation.ignition.gateway.dataroutes.HttpMethod;
@@ -17,6 +18,7 @@ import com.inductiveautomation.ignition.gateway.model.AbstractGatewayModuleHook;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 import com.inductiveautomation.ignition.gateway.secrets.Plaintext;
 import com.inductiveautomation.ignition.gateway.secrets.Secret;
+import com.inductiveautomation.ignition.gateway.web.nav.NavigationModel;
 import com.inductiveautomation.ignition.gateway.web.systemjs.SystemJsModule;
 import com.joyautomation.ignition.mantle.config.BrokerConnectionConfig;
 import com.joyautomation.ignition.mantle.mqtt.BrokerConnection;
@@ -29,6 +31,10 @@ import org.slf4j.LoggerFactory;
 public class MantleGatewayHook extends AbstractGatewayModuleHook {
     public static final String MODULE_ID = "com.joyautomation.mantle";
     private static final Logger logger = LoggerFactory.getLogger("Mantle");
+    /** The Historian module's provider config, so the status page can link to it when there is no historian. */
+    private static final ResourceType HISTORIAN_PROVIDER =
+        new ResourceType("com.inductiveautomation.historian", "historian-provider");
+    private static final String HISTORIAN_PAGE = "/services/historian/providers";
 
     private record Running(BrokerConnection connection, ManagedTagSink sink, BiPredicate<String, Object> writer,
                            String provider) {
@@ -170,7 +176,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
             // any authenticated gateway identity: the status page's own web session, an API token (so a
             // monitoring system or a test can read it), or a trusted security zone
             .requirePermission(PermissionType.READ)
-            .handler((request, response) -> StatusRoutes.status(snapshot()))
+            .handler((request, response) -> StatusRoutes.status(snapshot(), links()))
             .nocache()
             .mount();
 
@@ -202,6 +208,40 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
                 r.sink().historian(), true, c.isConnected(), c.lastError(),
                 s.groups().stream().sorted().toList(), c.host().counters(), c.host().nodeStatus());
         }).toList();
+    }
+
+    /**
+     * Asks the gateway where its own configuration pages are. A module that tells you to go and configure
+     * something should be able to take you there, and the navigation model knows the answer better than a
+     * hardcoded path does.
+     */
+    private ModuleStatus.Links links() {
+        return new ModuleStatus.Links(navUrl(HISTORIAN_PROVIDER, HISTORIAN_PAGE));
+    }
+
+    /**
+     * Where the gateway keeps a given kind of configuration. Asks the navigation model first, because a page
+     * that moves takes its own link with it — but only 19 of the gateway's 63 pages advertise the resource type
+     * they edit, and the Historian module's is not one of them. So there is a fallback, and it is checked
+     * against the navigation model too rather than trusted blindly: a link that 404s is worse than none.
+     */
+    private String navUrl(ResourceType resourceType, String fallbackUrl) {
+        try {
+            NavigationModel nav = context.getWebResourceManager().getNavigationModel();
+            Optional<String> byType = nav.findNavLocationForResourceType(resourceType)
+                .map(location -> location.mount().url());
+            if (byType.isPresent()) {
+                return "/app" + byType.get();
+            }
+            boolean exists = nav.getSections().stream()
+                .flatMap(section -> section.getCategories().stream())
+                .flatMap(category -> category.pages().stream())
+                .anyMatch(page -> page.mount() != null && fallbackUrl.equals(page.mount().url()));
+            return exists ? "/app" + fallbackUrl : null;
+        } catch (Exception e) {
+            logger.debug("Could not resolve a nav location for {}", resourceType, e);
+            return null;
+        }
     }
 
     private List<BrokerConnection> connections() {

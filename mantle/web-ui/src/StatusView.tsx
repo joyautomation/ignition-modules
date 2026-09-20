@@ -1,7 +1,7 @@
 // The rendering half, kept apart from the fetching half so it is a pure function of the status it is given.
 import React from "react";
 
-import type { Connection, Counters, Node, Status } from "./types";
+import type { Connection, Counters, Links, Node, Status } from "./types";
 
 export function StatusView({
   status,
@@ -39,7 +39,9 @@ export function StatusView({
           become a tag.
         </p>
       ) : (
-        status.connections.map((c) => <ConnectionCard key={c.name} connection={c} onRebirth={onRebirth} />)
+        status.connections.map((c) => (
+          <ConnectionCard key={c.name} connection={c} links={status.links} onRebirth={onRebirth} />
+        ))
       )}
     </div>
   );
@@ -56,9 +58,11 @@ function Problem({ error, stale }: { error: string | null; stale?: boolean }) {
 
 function ConnectionCard({
   connection,
+  links,
   onRebirth,
 }: {
   connection: Connection;
+  links: Links;
   onRebirth: (group: string, edge: string) => void;
 }) {
   const { counters } = connection;
@@ -80,8 +84,15 @@ function ConnectionCard({
       {!connection.historian && (
         <p style={styles.warning}>
           <strong>Nothing is being recorded.</strong> This gateway has no tag historian, so tags are created with
-          history off. Add one — the Historian module, or any tag history provider — and history switches itself
-          on as each node births again.
+          history off. Add one and history switches itself on as each node births again — nothing here needs
+          changing.{" "}
+          {links.historian ? (
+            <a style={styles.warningLink} href={links.historian}>
+              Configure a historian →
+            </a>
+          ) : (
+            <>The Historian module does not appear to be installed on this gateway.</>
+          )}
         </p>
       )}
 
@@ -250,6 +261,7 @@ const styles: Record<string, React.CSSProperties> = {
   muted: { opacity: 0.7, fontSize: 13 },
   error: { color: "#f85149", fontSize: 13, margin: 0 },
   errorStale: { opacity: 0.8 },
+  warningLink: { color: "inherit", fontWeight: 600, whiteSpace: "nowrap" },
   warning: {
     margin: 0,
     padding: "8px 10px",

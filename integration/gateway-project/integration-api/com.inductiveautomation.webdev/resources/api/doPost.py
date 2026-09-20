@@ -46,10 +46,17 @@ def doPost(request, session):
 				pages = []
 				for page in category.pages():
 					mount = page.mount()
+					types = []
+					try:
+						for rt in page.associatedResourceTypes():
+							types.append(str(rt))
+					except Exception:
+						pass
 					pages.append({
 						'label': str(page.label()),
 						'url': str(mount.url()) if mount is not None else None,
 						'permission': str(page.requiredPermission()),
+						'resourceTypes': types,
 					})
 				categories.append({'key': str(category.key()), 'label': str(category.label()), 'pages': pages})
 			sections.append({'label': str(section.getLabel()), 'categories': categories})

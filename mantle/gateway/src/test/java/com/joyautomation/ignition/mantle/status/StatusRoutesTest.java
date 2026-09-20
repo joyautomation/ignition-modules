@@ -14,10 +14,27 @@ import org.junit.jupiter.api.Test;
  * quietly emptying a column on the page.
  */
 class StatusRoutesTest {
+    private static final ModuleStatus.Links LINKS =
+        new ModuleStatus.Links("/app/services/historian/providers");
+
+    /** The page offers a way to fix what it is complaining about, so the link is part of the contract. */
+    @Test
+    void theGatewaysOwnConfigPagesAreLinked() {
+        JsonObject links = StatusRoutes.status(List.of(connection()), LINKS).getAsJsonObject("links");
+        assertEquals("/app/services/historian/providers", links.get("historian").getAsString());
+    }
+
+    /** No Historian module installed: a null, so the page can say what to do rather than offer a dead link. */
+    @Test
+    void anAbsentConfigPageIsNullRatherThanABrokenLink() {
+        JsonObject links = StatusRoutes.status(List.of(connection()), new ModuleStatus.Links(null))
+            .getAsJsonObject("links");
+        assertTrue(links.get("historian").isJsonNull());
+    }
 
     @Test
     void aConnectionSerializesEverythingThePageDraws() {
-        JsonObject json = StatusRoutes.status(List.of(connection()));
+        JsonObject json = StatusRoutes.status(List.of(connection()), LINKS);
 
         assertTrue(json.get("asOfMs").getAsLong() > 0);
         JsonObject c = json.getAsJsonArray("connections").get(0).getAsJsonObject();
@@ -42,7 +59,7 @@ class StatusRoutesTest {
 
     @Test
     void nodesAndTheirDevicesSerialize() {
-        JsonObject c = StatusRoutes.status(List.of(connection()))
+        JsonObject c = StatusRoutes.status(List.of(connection()), LINKS)
             .getAsJsonArray("connections").get(0).getAsJsonObject();
 
         JsonObject node = c.getAsJsonArray("nodes").get(0).getAsJsonObject();
@@ -63,7 +80,7 @@ class StatusRoutesTest {
     /** A node that has never birthed has no birth time; the page has to be handed a null, not a zero. */
     @Test
     void aNodeThatHasNeverBirthedReportsNullNotZero() {
-        JsonObject c = StatusRoutes.status(List.of(connection()))
+        JsonObject c = StatusRoutes.status(List.of(connection()), LINKS)
             .getAsJsonArray("connections").get(0).getAsJsonObject();
 
         JsonObject dark = c.getAsJsonArray("nodes").get(1).getAsJsonObject();
@@ -80,7 +97,7 @@ class StatusRoutesTest {
             "Core", true, false, "ConnectException: Connection refused", List.of(),
             new ModuleStatus.Counters(0, 0, 0, 0, 0, 0), List.of());
 
-        JsonObject c = StatusRoutes.status(List.of(down)).getAsJsonArray("connections").get(0).getAsJsonObject();
+        JsonObject c = StatusRoutes.status(List.of(down), LINKS).getAsJsonArray("connections").get(0).getAsJsonObject();
         assertFalse(c.get("connected").getAsBoolean());
         assertEquals("ConnectException: Connection refused", c.get("lastError").getAsString());
     }
@@ -91,7 +108,7 @@ class StatusRoutesTest {
         ModuleStatus.Connection none = new ModuleStatus.Connection("c", "tcp://b:1883", "h", "Sparkplug", null,
             true, true, null, List.of(), new ModuleStatus.Counters(0, 0, 0, 0, 0, 0), List.of());
 
-        JsonObject c = StatusRoutes.status(List.of(none)).getAsJsonArray("connections").get(0).getAsJsonObject();
+        JsonObject c = StatusRoutes.status(List.of(none), LINKS).getAsJsonArray("connections").get(0).getAsJsonObject();
         assertTrue(c.get("historian").isJsonNull(), "a missing historian must be visible, not absent");
     }
 

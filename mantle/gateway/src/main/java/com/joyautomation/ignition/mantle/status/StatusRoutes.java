@@ -16,13 +16,16 @@ public final class StatusRoutes {
     private StatusRoutes() {
     }
 
-    public static JsonObject status(List<ModuleStatus.Connection> connections) {
+    public static JsonObject status(List<ModuleStatus.Connection> connections, ModuleStatus.Links links) {
         JsonArray array = new JsonArray();
         for (ModuleStatus.Connection c : connections) {
             array.add(connection(c));
         }
         JsonObject root = new JsonObject();
         root.add("connections", array);
+        JsonObject where = new JsonObject();
+        where.addProperty("historian", links.historian());
+        root.add("links", where);
         root.addProperty("asOfMs", System.currentTimeMillis());
         return root;
     }

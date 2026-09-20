@@ -2,7 +2,13 @@
 
 export interface Status {
   connections: Connection[];
+  /** Where the gateway's own config pages are, resolved server-side; a field is null when the page isn't there. */
+  links: Links;
   asOfMs: number;
+}
+
+export interface Links {
+  historian: string | null;
 }
 
 export interface Connection {

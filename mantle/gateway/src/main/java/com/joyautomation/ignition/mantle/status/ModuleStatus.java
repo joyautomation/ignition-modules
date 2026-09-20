@@ -22,6 +22,14 @@ public final class ModuleStatus {
     }
 
     /**
+     * Where the gateway's own configuration pages are, resolved from its navigation model rather than hardcoded,
+     * so a link still works if Inductive moves a page. Null when the page is not there (the Historian module is
+     * not installed, say) — in which case the page says what to do instead of offering a dead link.
+     */
+    public record Links(String historian) {
+    }
+
+    /**
      * Health in five numbers. Gaps and decode failures are the ones worth watching: both mean data was lost
      * between the edge and here, and both should sit at zero on a healthy link.
      */
