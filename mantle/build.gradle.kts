@@ -21,6 +21,11 @@ ignitionModule {
         "Sparkplug B host application. Tags are created as they are born, historized by default, " +
             "and customized in place."
     )
+    // The gateway shows this when the module is installed, and ACCEPT_MODULE_LICENSES exists because modules
+    // are expected to have one. It carries the Apache-2.0 grant and the third-party notices (Tahu is EPL-2.0,
+    // whose licence and source pointer have to travel with the binary).
+    license.set("license.html")
+
     requiredIgnitionVersion.set("8.3.0")
     requiredFrameworkVersion.set("8")
     // no licensing: without this the gateway runs the module on the two hour trial timer

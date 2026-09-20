@@ -1,0 +1,38 @@
+Mantle, and the other Ignition modules in this repository
+Copyright 2026 Joy Automation, LLC
+
+This product includes software developed at Joy Automation, LLC (https://joyautomation.com),
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+────────────────────────────────────────────────────────────────────────────
+Third-party software distributed inside the Mantle module (.modl)
+────────────────────────────────────────────────────────────────────────────
+
+Eclipse Tahu — tahu-core
+  Eclipse Public License 2.0 (EPL-2.0)   https://www.eclipse.org/legal/epl-2.0
+  Copyright (c) Cirrus Link Solutions and others.
+  Source: https://github.com/eclipse-sparkplug/tahu
+  Distributed unmodified. EPL-2.0 requires that this notice and the licence travel with the binary,
+  and that its source remain available at the address above.
+
+HiveMQ MQTT Client — hivemq-mqtt-client        Apache License 2.0
+Netty — netty-buffer, netty-codec, netty-common, netty-handler, netty-resolver, netty-transport,
+        netty-transport-native-unix-common                        Apache License 2.0
+Jackson — jackson-annotations, jackson-core, jackson-databind      Apache License 2.0
+Apache Commons — commons-codec, commons-compress, commons-io, commons-lang3
+                                                                   Apache License 2.0
+Google Dagger — dagger                                             Apache License 2.0
+javax.inject                                                       Apache License 2.0
+JCTools — jctools-core                                             Apache License 2.0
+RxJava — rxjava                                                    Apache License 2.0
+victools — jsonschema-generator, jsonschema-module-jackson         Apache License 2.0
+FasterXML — classmate                                              Apache License 2.0
+Protocol Buffers — protobuf-java                                   BSD 3-Clause
+Reactive Streams — reactive-streams                                MIT-0
+
+Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+BSD 3-Clause:       https://opensource.org/licenses/BSD-3-Clause
+MIT-0:              https://opensource.org/licenses/MIT-0
+
+Ignition is a registered trademark of Inductive Automation, LLC. Mantle is not affiliated with,
+endorsed by, or sponsored by Inductive Automation. It is a third-party module for Ignition.
