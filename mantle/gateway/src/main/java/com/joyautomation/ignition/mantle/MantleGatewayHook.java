@@ -60,7 +60,6 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         // REST API — and so to any UI built on it — and connections can only be created by editing files.
         context.getConfigurationManager().getResourceTypeMetaRegistry().register(SparkplugConnections.meta());
         registerStatusPage(context);
-        registerConnectionsPage(context);
         connections = NamedResourceHandler.newBuilder(SparkplugConnections.meta())
             .context(context)
             .onInitialResources(resources -> resources.forEach(this::startConnection))
@@ -156,18 +155,18 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
      * looks when they want to know whether something is working, and this page answers exactly that.
      */
     /**
-     * The page where connections are added and edited. The form is the extension point's, generated from the
-     * annotations on the settings record — so this is the whole of the configuration UI.
+     * NOT MOUNTED, and the reason is worth keeping. Ignition does not hand a module a configuration page: every
+     * one in the gateway is a React page its module wrote (DatabaseConnectionsPage, DeviceConnections,
+     * OpcConnections…). What an extension point provides is the ADD/EDIT form that such a page renders —
+     * {@link MqttConnectionExtensionPoint#getWebUiComponent} — not the page itself. Mounting that form directly
+     * on a nav route serialises a component with no "type" field, and the gateway renders
+     * "Web UI Component type not found".
+     *
+     * <p>So a connections page means writing one, the way the status page is written, against the configuration
+     * REST API. Until then connections are files, and the status page says so.
      */
     private void registerConnectionsPage(GatewayContext context) {
-        new MqttConnectionExtensionPoint().getWebUiComponent(ExtensionPoint.ComponentType.EDIT_FORM)
-            .ifPresent(form -> context.getWebResourceManager().getNavigationModel().getConnections()
-                .addCategory("mantle", category -> category
-                    .label("Sparkplug")
-                    .addPage("Connections", page -> page
-                        .title("Sparkplug Connections")
-                        .requiredPermission(PermissionType.READ)
-                        .mount("/connections/sparkplug", form))));
+        // intentionally empty
     }
 
     private void registerStatusPage(GatewayContext context) {
