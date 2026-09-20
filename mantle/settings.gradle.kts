@@ -16,6 +16,14 @@ plugins {
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        // the node-gradle plugin downloads the node runtime from here
+        ivy {
+            name = "Node.js"
+            setUrl("https://nodejs.org/dist/")
+            patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+            metadataSources { artifact() }
+            content { includeModule("org.nodejs", "node") }
+        }
         maven {
             url = uri("https://nexus.inductiveautomation.com/repository/public/")
         }
@@ -25,3 +33,4 @@ dependencyResolutionManagement {
 rootProject.name = "mantle-ignition"
 
 include(":gateway")
+include(":web-ui")

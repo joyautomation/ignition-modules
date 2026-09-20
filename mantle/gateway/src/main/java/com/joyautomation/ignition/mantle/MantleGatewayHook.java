@@ -17,6 +17,7 @@ import com.inductiveautomation.ignition.gateway.model.AbstractGatewayModuleHook;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 import com.inductiveautomation.ignition.gateway.secrets.Plaintext;
 import com.inductiveautomation.ignition.gateway.secrets.Secret;
+import com.inductiveautomation.ignition.gateway.web.systemjs.SystemJsModule;
 import com.joyautomation.ignition.mantle.config.BrokerConnectionConfig;
 import com.joyautomation.ignition.mantle.mqtt.BrokerConnection;
 import com.joyautomation.ignition.mantle.status.ModuleStatus;
@@ -44,6 +45,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
     @Override
     public void setup(GatewayContext context) {
         this.context = context;
+        registerStatusPage(context);
         connections = NamedResourceHandler.newBuilder(BrokerConnectionConfig.META)
             .context(context)
             .onInitialResources(resources -> resources.forEach(this::startConnection))
@@ -130,6 +132,22 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
     }
 
     // ── the gateway's own web UI ──────────────────────────────────────────────
+
+    /**
+     * Puts a Mantle page in the gateway's own navigation, under Diagnostics — which is where an administrator
+     * looks when they want to know whether something is working, and this page answers exactly that.
+     */
+    private void registerStatusPage(GatewayContext context) {
+        SystemJsModule bundle = new SystemJsModule(MODULE_ID, "/res/mantle/mantleStatus.js");
+        context.getWebResourceManager().getNavigationModel().getDiagnostics()
+            .addCategory("mantle", category -> category
+                .label("Mantle")
+                .addPage("Sparkplug", page -> page
+                    .title("Mantle — Sparkplug status")
+                    .requiredPermission(PermissionType.READ)
+                    // "MantleStatus" is the named export of the UMD bundle
+                    .mount("/mantle-status", "MantleStatus", bundle)));
+    }
 
     /** Where the status page's bundle is served from: /res/mantle/<file>, out of the jar's "mounted" folder. */
     @Override

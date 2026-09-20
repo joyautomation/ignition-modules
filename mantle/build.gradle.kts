@@ -35,7 +35,8 @@ ignitionModule {
 
     projectScopes.putAll(
         mapOf(
-            ":gateway" to "G"
+            ":gateway" to "G",
+            ":web-ui" to "G"
         )
     )
 

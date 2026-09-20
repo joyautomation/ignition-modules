@@ -28,6 +28,9 @@ dependencies {
         exclude(group = "org.slf4j")
     }
 
+    // carries mounted/mantleStatus.js into the .modl
+    modlImplementation(project(":web-ui"))
+
     testImplementation("com.inductiveautomation.ignitionsdk:ignition-common:$sdkVersion")
     testImplementation("com.inductiveautomation.ignitionsdk:gateway-api:$sdkVersion")
     testImplementation("org.slf4j:slf4j-api:2.0.17")
