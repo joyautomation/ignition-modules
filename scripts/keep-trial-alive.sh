@@ -11,10 +11,15 @@
 #   export IGNITION_API_TOKEN=...                       # for one shell
 #   echo 'IGNITION_API_TOKEN=...' > .env.trial          # for cron; gitignored
 #
-# To run it every 100 minutes, inside the two-hour window:
+# To run it from cron:
 #
 #   crontab -e
-#   */100 * * * * cd /path/to/ignition && scripts/keep-trial-alive.sh >> /tmp/ignition-trial.log 2>&1
+#   */5 * * * * cd /path/to/ignition && scripts/keep-trial-alive.sh >> /tmp/ignition-trial.log 2>&1
+#
+# Every five minutes, because the gateway REFUSES to reset a trial that still has time on it (the route answers
+# 403 unless getDemoTimeRemaining() is 0). So this is a no-op almost every run, and resets promptly on the one
+# run after the trial lapses — which keeps the outage to minutes rather than however long until the next hourly
+# tick. There is no way to reset early and stay ahead of it.
 #
 # This automates Inductive Automation's own reset button on a development gateway, which is what the button is
 # there for. It is not a way to run anything real: for a demo that has to stay up unattended, or anything a
@@ -46,9 +51,15 @@ if [ "${1:-}" = "--status" ]; then
     exit 0
 fi
 
+# The gateway only allows a reset once the trial has actually run out, so having time left is the normal case
+# and not a problem to report.
+if [ "$before" -gt 0 ]; then
+    echo "$(date -Is) trial has $(pretty "$before") left; nothing to do"
+    exit 0
+fi
+
 if [ -z "${IGNITION_API_TOKEN:-}" ]; then
-    echo "$(date -Is) trial has $(pretty "$before") left, but IGNITION_API_TOKEN is not set — see the header of" \
-        "this script for how to make one" >&2
+    echo "$(date -Is) the trial has expired, but IGNITION_API_TOKEN is not set — see the header of this script" >&2
     exit 2
 fi
 
@@ -56,8 +67,8 @@ code="$(curl -s -m 15 -o /dev/null -w '%{http_code}' -X POST \
     -H "X-Ignition-API-Token: $IGNITION_API_TOKEN" "$gateway/data/api/v1/trial")"
 after="$(left)"
 
-if [ "$code" != "200" ] || [ "$after" -le "$before" ]; then
+if [ "$code" != "200" ] || [ "$after" -le 0 ]; then
     echo "$(date -Is) reset FAILED (HTTP $code); $(pretty "$after") left" >&2
     exit 1
 fi
-echo "$(date -Is) trial reset: $(pretty "$before") -> $(pretty "$after")"
+echo "$(date -Is) trial reset: it had expired, now $(pretty "$after")"
