@@ -52,6 +52,21 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
 - A test that passes suspiciously fast deserves the same look as one that fails; everything local really is
   that fast (a Nautilus edge births in ~100 ms, a SIGKILL's will arrives in ~3 ms).
 
+## Content ideas are part of the work
+
+Anything demo-able or surprising that happens here gets a post idea in
+`~/Development/joyautomation/content/ideas.md`, under **"Ignition modules"**, IDs `IM-##` (continue the numbering).
+Do it at the end of a piece of work without being asked. Follow that file's format exactly: `### IM-NN — Title ·
+channels · effort`, a paragraph that leads with the finding, then `*Source: path*`. Read that repo's `README.md`
+and `sourcing.md` first. Rules specific to this project:
+
+- Bugs found, wrong guesses, and measurements (6 of 16 vs 15 of 16) make better ideas than features. Record the
+  number and the test that produced it.
+- Cross-reference instead of duplicating: Nautilus-side stories are `N-##` and belong to that section.
+- **Nothing here has tested Cirrus Link's MQTT Engine.** Don't write a comparison claim into an idea as fact.
+- That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
+  entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
+
 ## Conventions
 
 - Protocol logic stays free of Ignition and MQTT types (`sparkplug/HostState` behind `TagSink` and `Outbound`)
