@@ -7,12 +7,16 @@ export function StatusView({
   status,
   error,
   loaded,
+  notice,
   onRebirth,
+  onDismissNotice,
 }: {
   status: Status | null;
   error: string | null;
   loaded: boolean;
+  notice: string | null;
   onRebirth: (group: string, edge: string) => void;
+  onDismissNotice: () => void;
 }) {
   if (!loaded && !error) {
     return <p style={styles.muted}>Loading…</p>;
@@ -24,6 +28,11 @@ export function StatusView({
     <div style={styles.page}>
       {/* A refresh that fails while an older reading is on screen: say so, but keep showing the reading. */}
       {error && <Problem error={error} stale />}
+      {notice && (
+        <p style={styles.notice} onClick={onDismissNotice} title="click to dismiss">
+          {notice}
+        </p>
+      )}
       {status.connections.length === 0 ? (
         <p style={styles.muted}>
           No broker connections are configured. Add one under Connections, and every metric that arrives will
@@ -203,6 +212,15 @@ const styles: Record<string, React.CSSProperties> = {
   muted: { opacity: 0.7, fontSize: 13 },
   error: { color: "#f85149", fontSize: 13, margin: 0 },
   errorStale: { opacity: 0.8 },
+  notice: {
+    margin: 0,
+    padding: "6px 10px",
+    borderRadius: 4,
+    fontSize: 13,
+    background: "rgba(128,128,128,0.15)",
+    border: "1px solid rgba(128,128,128,0.3)",
+    cursor: "pointer",
+  },
   counters: { display: "flex", flexWrap: "wrap", gap: 24 },
   counter: { minWidth: 96 },
   counterValue: { fontSize: 22, fontWeight: 650, fontVariantNumeric: "tabular-nums" },

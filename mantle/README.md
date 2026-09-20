@@ -118,7 +118,9 @@ change on write; it changes when the edge reports it. Writes to an offline node 
 The gateway's web UI gets a **Mantle** page at Diagnostics → Mantle → Sparkplug: every connection, whether it is connected, the
 nodes and devices under it with their last birth, and the four numbers worth watching — messages, sequence gaps,
 rebirths requested, and decode failures. Gaps and decode failures both mean data was lost between the edge and
-the gateway, and both should sit at zero on a healthy link. Each node has a **Request rebirth** button.
+the gateway, and both should sit at zero on a healthy link. Each node has a **Request rebirth** button. That button is a mutating call, so it carries the gateway's CSRF
+token, read from `/data/app/session` — the same endpoint the gateway's own web app reads it from. It reports
+what happened rather than failing silently.
 
 The same data is JSON at `GET /data/mantle/status`, and a rebirth is `POST /data/mantle/rebirth/<group>/<edge>`.
 Both take any authenticated gateway identity — the web UI's own session, or an
