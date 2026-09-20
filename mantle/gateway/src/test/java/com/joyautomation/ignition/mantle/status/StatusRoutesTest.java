@@ -25,6 +25,7 @@ class StatusRoutesTest {
         assertEquals("tcp://broker:1883", c.get("brokerUrl").getAsString());
         assertEquals("joy-dev", c.get("hostId").getAsString());
         assertEquals("Sparkplug", c.get("tagProvider").getAsString());
+        assertEquals("Core", c.get("historian").getAsString());
         assertTrue(c.get("connected").getAsBoolean());
         assertTrue(c.get("lastError").isJsonNull());
         assertEquals(List.of("Plant"), c.getAsJsonArray("groups").asList().stream()
@@ -76,7 +77,7 @@ class StatusRoutesTest {
     @Test
     void aDisconnectedConnectionCarriesItsError() {
         ModuleStatus.Connection down = new ModuleStatus.Connection("down", "tcp://nope:1883", "h", "Sparkplug",
-            true, false, "ConnectException: Connection refused", List.of(),
+            "Core", true, false, "ConnectException: Connection refused", List.of(),
             new ModuleStatus.Counters(0, 0, 0, 0, 0, 0), List.of());
 
         JsonObject c = StatusRoutes.status(List.of(down)).getAsJsonArray("connections").get(0).getAsJsonObject();
@@ -84,11 +85,22 @@ class StatusRoutesTest {
         assertEquals("ConnectException: Connection refused", c.get("lastError").getAsString());
     }
 
+    /** No historian means nothing is being recorded, and the page has to be able to say so. */
+    @Test
+    void aConnectionWithNoHistorianReportsNull() {
+        ModuleStatus.Connection none = new ModuleStatus.Connection("c", "tcp://b:1883", "h", "Sparkplug", null,
+            true, true, null, List.of(), new ModuleStatus.Counters(0, 0, 0, 0, 0, 0), List.of());
+
+        JsonObject c = StatusRoutes.status(List.of(none)).getAsJsonArray("connections").get(0).getAsJsonObject();
+        assertTrue(c.get("historian").isJsonNull(), "a missing historian must be visible, not absent");
+    }
+
     private static ModuleStatus.Connection connection() {
         ModuleStatus.Node online = new ModuleStatus.Node("Plant", "Edge1", true, 7, 1000L, 11, false,
             List.of(new ModuleStatus.Device("PLC1", true, 1001L, 6)));
         ModuleStatus.Node dark = new ModuleStatus.Node("Plant", "Edge2", false, -1, null, 0, true, List.of());
-        return new ModuleStatus.Connection("dev-broker", "tcp://broker:1883", "joy-dev", "Sparkplug", true, true,
-            null, List.of("Plant"), new ModuleStatus.Counters(1234, 2, 3, 1, 1, 2), List.of(online, dark));
+        return new ModuleStatus.Connection("dev-broker", "tcp://broker:1883", "joy-dev", "Sparkplug", "Core",
+            true, true, null, List.of("Plant"), new ModuleStatus.Counters(1234, 2, 3, 1, 1, 2),
+            List.of(online, dark));
     }
 }

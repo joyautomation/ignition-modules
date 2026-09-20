@@ -53,7 +53,19 @@ keytool -exportcert -alias mantle-dev -keystore dev.jks -storepass devpassword -
 openssl crl2pkcs7 -nocrl -certfile dev.crt -out dev.p7b
 ```
 
-### Before buying a certificate
+### You may not need to buy a certificate at all
+
+IA staff, repeatedly: *"It almost doesn't matter. Ignition doesn't look at it or care, only your customers will
+maybe see that your module is signed by a real code signing certificate or not"* and *"you can simply generate
+your own certificate."* **reported**, and corroborated concretely: Musson Industrial's Embr modules are approved
+and listed on the Showcase, and their shipped `.modl` carries a bare self-signed certificate
+(`subject=CN = Musson Industrial`, same issuer, no CA chain).
+
+So a CA certificate is a trust-and-polish decision, not a gate. A self-signed module installs; the administrator
+is asked to accept an unverifiable certificate once. For a free module whose source is public, that is a defensible
+trade — the source is the trust story. Revisit it if you start selling.
+
+### If you do buy a certificate
 
 Since June 2023 the private key of a publicly trusted code-signing certificate must live on certified hardware: a
 USB token, or a cloud HSM. **A CA will not hand you a `.p12` to put in a GitHub secret.** That decides where
@@ -67,6 +79,17 @@ releases run:
 - OV is enough. EV buys Windows SmartScreen reputation, which means nothing to a gateway.
 - **Embed the full chain.** An incomplete chain makes Ignition report the module as self-signed anyway. **reported**
 
+### Dependency licences are a real constraint
+
+IA staff: *"Generally speaking, GPL, AGPL, and LGPL are not compatible with our signed module system unless you
+release the full source code."* **reported.** The mechanism is that copyleft of that family entitles a user to
+swap the component for their own build, which would require re-signing the module, which an end user cannot do.
+
+**Mantle is clean**, audited from each jar's manifest and the published POMs: 11 Apache-2.0, 3 MIT-0, 2 BSD
+3-Clause, and Eclipse Tahu under **EPL-2.0**. EPL-2.0 is not in that list and carries no relinking requirement —
+it is the licence the Sparkplug reference implementation ships under, and what Cirrus Link's own modules are built
+on. Audit this again whenever a dependency is added; it is now the constraint most likely to bite.
+
 ## Getting listed
 
 ### There is no module store in the gateway — the Showcase is a web listing
@@ -79,6 +102,29 @@ repo's `dev-up.sh` uses). **verified**
 The [Third-Party Module Showcase](https://inductiveautomation.com/moduleshowcase/) is a **web page that links to
 your site**. You host the download, you sell it, you support it. As of 2026-09-19 it lists 111 modules from 52
 vendors, 63 marked 8.3-compatible. **reported**
+
+### Free and open source is explicitly allowed
+
+IA's own developer page, **verified** first-hand in their site bundle:
+
+> "if you'd like to list your module on the Inductive Automation Module Showcase **either for free or for sale**,
+> you can create a Module Showcase Developer Account. We do also make our licensing system available for you to
+> use in your module **if you are selling your module**."
+
+Their code renders a `0` price as the word **"Free"**. About a third of the catalogue is free, and several listed
+modules are Apache-2.0 or MIT with public repos — one listing's IA-published description reads *"Free,
+open-source"*. **reported**
+
+The boundary, from an IA staff post: *"It's no problem to distribute signed modules. The only problem would be if
+they weren't free, and you were somehow bypassing our licensing system to sell them."* **reported.** Free is
+unrestricted; selling means using IA's licensing system. A free module needs **no licensing integration at all**.
+
+Opt out of the trial timer with **`isFreeModule()` returning true in the hook** — which Mantle does. The
+`<freeModule>` flag in `module.xml` is deprecated, because anyone could edit it. **reported**
+
+**Do not use the Ignition Exchange for this.** Its terms force **MIT, irrevocably**, and it hosts project
+resources rather than `.modl` files. The Showcase lets you keep Apache-2.0 and your own terms. **verified**
+([Exchange terms](https://inductiveautomation.com/exchange/terms))
 
 ### How to apply
 
@@ -96,6 +142,11 @@ Review is light and concrete, quoted from the [FAQ](https://inductiveautomation.
 **They review your website**, so the product page has to exist first. The FAQ requires it to show: module name,
 description, Ignition version compatibility, cost, a download link so users can try it, and a way to purchase if
 applicable. **verified**
+
+An IA staff member rejecting an application in 2026 put the bar plainly: *"You need to have a link to download the
+module and an upfront price, no 'email me' stuff"*, and *"SE will do a technical review of the module and a
+marketing review of your website."* For a free module that means: state the cost as **Free**, and give a **direct
+download link with no email gate**. **reported**
 
 ### Naming rules — and a problem with ours
 
@@ -181,8 +232,10 @@ on 8.3, so supporting both means separate builds. **reported**
       Jackson and protobuf (Apache-2.0 / BSD). EPL-2.0 is weak copyleft: shipping Tahu unmodified is fine, but its
       licence and a notice of where to get the source have to travel with the module. Generate a `NOTICE` at build.
 - [ ] **A real version.** `0.1.0-SNAPSHOT` today, and the middle digit has to match the platform.
-- [ ] **A CA code-signing certificate on a hardware token**, bought *before* applying, so the module does not land
-      in 8.3's quarantine list.
+- [ ] **Sign the module.** Self-signed is enough to be listed (a leading open-source Showcase vendor ships exactly
+      that); a CA certificate on a hardware token buys a cleaner install prompt. Decide which, then do it before
+      applying.
+- [ ] **Re-audit dependency licences** for anything GPL/LGPL/AGPL before each release. Clean today.
 - [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of approval.
 - [ ] **User documentation in the module** (`documentationFiles` puts it on the gateway's module page).
 - [ ] **The status page looked at by a person**, and the gaps in `mantle/README.md` (TLS, authenticated brokers,
@@ -190,12 +243,18 @@ on 8.3, so supporting both means separate builds. **reported**
 - [ ] **Sparkplug conformance**: run `sparkplug-tck-go`'s host profile in CI. Eclipse also runs a "Sparkplug
       Compatible" programme with a public product list. **open: membership and cost.**
 
+### One more thing, if Edge matters
+
+Showcase vendors believe open-source modules are not approved for **Ignition Edge**, on the reasoning that an open
+module id could be used to sidestep Edge's licence limits. That is vendor opinion with no IA statement behind it.
+**reported, and worth asking directly only if Edge is in scope.**
+
 ### Two questions to put to IA in writing
 
-1. **Is there any fee for a Showcase listing?** No source says either way.
+1. **Is there any fee for a Showcase listing?** Still no source either way, though no vendor mentions paying.
 2. **Reconcile their own docs on certificates.** The user manual says *"Authors are required to request
    certificates from Inductive Automation"*, while the SDK docs and IA staff on the forum say you use your own,
-   self-signed or CA. Nobody has documented IA actually issuing them. Ask before buying.
+   self-signed or CA — and listed modules demonstrably ship self-signed. The manual looks stale; confirm.
 
 Then, whatever the answer: post in the forum's 3rd Party Modules category. It needs nobody's approval and, by
 several vendors' accounts, draws more attention than the Showcase does.

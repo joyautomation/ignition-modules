@@ -198,9 +198,9 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         return live.stream().map(r -> {
             BrokerConnection c = r.connection();
             BrokerConnection.Settings s = c.settings();
-            return new ModuleStatus.Connection(s.name(), s.brokerUrl(), s.hostId(), r.provider(), true,
-                c.isConnected(), c.lastError(), s.groups().stream().sorted().toList(),
-                c.host().counters(), c.host().nodeStatus());
+            return new ModuleStatus.Connection(s.name(), s.brokerUrl(), s.hostId(), r.provider(),
+                r.sink().historian(), true, c.isConnected(), c.lastError(),
+                s.groups().stream().sorted().toList(), c.host().counters(), c.host().nodeStatus());
         }).toList();
     }
 

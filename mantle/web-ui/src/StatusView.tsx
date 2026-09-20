@@ -71,9 +71,19 @@ function ConnectionCard({
         <span style={styles.muted}>
           {connection.brokerUrl} · host ID <code>{connection.hostId}</code> · tags into{" "}
           <code>[{connection.tagProvider}]</code>
+          {connection.historian && <> · recording to <code>{connection.historian}</code></>}
           {connection.groups.length > 0 && <> · groups {connection.groups.join(", ")}</>}
         </span>
       </header>
+
+      {/* The failure this module exists to prevent: tags arrive, look healthy, and keep nothing. */}
+      {!connection.historian && (
+        <p style={styles.warning}>
+          <strong>Nothing is being recorded.</strong> This gateway has no tag historian, so tags are created with
+          history off. Add one — the Historian module, or any tag history provider — and history switches itself
+          on as each node births again.
+        </p>
+      )}
 
       {!connection.connected && connection.lastError && (
         <p style={styles.error}>Not connected: {connection.lastError}</p>
@@ -240,6 +250,15 @@ const styles: Record<string, React.CSSProperties> = {
   muted: { opacity: 0.7, fontSize: 13 },
   error: { color: "#f85149", fontSize: 13, margin: 0 },
   errorStale: { opacity: 0.8 },
+  warning: {
+    margin: 0,
+    padding: "8px 10px",
+    borderRadius: 4,
+    fontSize: 13,
+    background: "rgba(210,153,34,0.14)",
+    border: "1px solid rgba(210,153,34,0.45)",
+    color: "#d29922",
+  },
   notice: {
     margin: 0,
     padding: "6px 10px",

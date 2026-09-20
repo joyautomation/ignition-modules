@@ -63,8 +63,12 @@ public class ManagedTagSink implements TagSink {
     private final boolean historize;
     private final String historyProvider;
 
-    /** what the last birth said about a tag */
-    private record Definition(DataType dataType, MetricInfo info) {
+    /**
+     * What the last birth said about a tag, plus the historian it was given. The historian is part of the
+     * definition on purpose: a tag defined while no historian existed must be redefined when one appears,
+     * rather than staying silently unrecorded until something restarts.
+     */
+    private record Definition(DataType dataType, MetricInfo info, String historian) {
     }
 
     /** UDT types declared this session, by name, with the members they were built from */
@@ -91,6 +95,7 @@ public class ManagedTagSink implements TagSink {
     /** newest timestamp written per tag: the floor a live value must clear */
     private final Map<String, Long> lastTimes = new ConcurrentHashMap<>();
     private final AtomicBoolean skewWarned = new AtomicBoolean();
+    private final AtomicBoolean noHistorianWarned = new AtomicBoolean();
 
     /** one per broker connection feeding this provider; each only answers for paths it created */
     private final List<BiPredicate<String, Object>> writers = new CopyOnWriteArrayList<>();
@@ -309,7 +314,7 @@ public class ManagedTagSink implements TagSink {
         if (dataType == null) {
             return;
         }
-        Definition definition = new Definition(dataType, info);
+        Definition definition = new Definition(dataType, info, historize && info.historize() ? historian() : null);
         Definition previous = defined.put(path, definition);
         if (definition.equals(previous)) {
             return; // a rebirth that says nothing new
@@ -343,7 +348,7 @@ public class ManagedTagSink implements TagSink {
             props.set(WellKnownTagProps.EngHigh, info.engHigh());
         }
         if (historize && info.historize()) {
-            String historian = resolveHistorian();
+            String historian = historian();
             if (historian != null) {
                 props.set(TagHistoryProps.HistoryEnabled, true);
                 props.set(TagHistoryProps.HistoryProvider, historian);
@@ -401,12 +406,31 @@ public class ManagedTagSink implements TagSink {
             && configs.get(0).get(WellKnownTagProps.DataType) == dataType;
     }
 
-    private String resolveHistorian() {
+    /**
+     * The historian new tags are pointed at, or null when the gateway has none. Null is worth shouting about:
+     * a tag with history switched off looks exactly like a tag that is recording, and the whole point of this
+     * module is that you should not have to configure anything for your data to be kept.
+     */
+    public String historian() {
         if (historyProvider != null) {
             return historyProvider;
         }
         List<String> historians = context.getTagHistoryManager().getTagHistoryProviders();
-        return historians.isEmpty() ? null : historians.get(0);
+        if (historians.isEmpty()) {
+            if (historize && noHistorianWarned.compareAndSet(false, true)) {
+                logger.warn("No tag historian is configured on this gateway, so tags in '{}' are being created "
+                    + "with history OFF and nothing is being recorded. Add a historian (the Historian module, or "
+                    + "any tag history provider) and the next birth will switch history on by itself.",
+                    providerName);
+            }
+            return null;
+        }
+        // recovered: say so, and let the next birth pick it up
+        if (noHistorianWarned.compareAndSet(true, false)) {
+            logger.info("Tag historian '{}' is available; tags in '{}' will record from their next birth.",
+                historians.get(0), providerName);
+        }
+        return historians.get(0);
     }
 
     @Override

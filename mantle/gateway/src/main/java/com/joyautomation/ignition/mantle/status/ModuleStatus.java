@@ -10,10 +10,15 @@ public final class ModuleStatus {
     private ModuleStatus() {
     }
 
-    /** One broker connection and everything born under it. */
-    public record Connection(String name, String brokerUrl, String hostId, String tagProvider, boolean enabled,
-                             boolean connected, String lastError, List<String> groups, Counters counters,
-                             List<Node> nodes) {
+    /**
+     * One broker connection and everything born under it.
+     *
+     * @param historian the tag historian new tags are pointed at, or null when the gateway has none — in which
+     *                  case nothing is being recorded, which an operator has to be able to see
+     */
+    public record Connection(String name, String brokerUrl, String hostId, String tagProvider, String historian,
+                             boolean enabled, boolean connected, String lastError, List<String> groups,
+                             Counters counters, List<Node> nodes) {
     }
 
     /**

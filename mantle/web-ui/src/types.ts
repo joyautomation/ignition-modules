@@ -10,6 +10,8 @@ export interface Connection {
   brokerUrl: string;
   hostId: string;
   tagProvider: string;
+  /** null when the gateway has no historian at all — nothing is being recorded */
+  historian: string | null;
   connected: boolean;
   lastError: string | null;
   groups: string[];

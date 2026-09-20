@@ -52,6 +52,7 @@ public final class StatusRoutes {
         json.addProperty("brokerUrl", c.brokerUrl());
         json.addProperty("hostId", c.hostId());
         json.addProperty("tagProvider", c.tagProvider());
+        json.addProperty("historian", c.historian());
         json.addProperty("connected", c.connected());
         json.addProperty("lastError", c.lastError());
         JsonArray groups = new JsonArray();
