@@ -45,7 +45,10 @@ ignitionModule {
         )
     )
 
-    // unsigned modules only load on gateways running in developer mode
-    // (-Dignition.allowunsignedmodules=true). Set up signing before shipping.
-    skipModlSigning.set(true)
+    // Signed when a keystore is configured (ignition.signing.* in ~/.gradle/gradle.properties, or the signModule
+    // flags: see ../docs/releasing.md), unsigned otherwise. An unsigned module only loads on a gateway started
+    // with -Dignition.allowunsignedmodules=true, which is what the dev stack and CI do.
+    skipModlSigning.set(
+        !project.hasProperty("ignition.signing.keystoreFile") && !project.hasProperty("ignition.signing.pkcs11CfgFile")
+    )
 }

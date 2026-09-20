@@ -6,3 +6,10 @@ build/
 .vscode/
 node_modules/
 .claude/settings.local.json
+# signing material never belongs in the repo
+.signing/
+*.jks
+*.p12
+*.pfx
+*.p7b
+sign.props
