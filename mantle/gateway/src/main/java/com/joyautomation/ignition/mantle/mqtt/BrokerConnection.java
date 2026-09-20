@@ -69,6 +69,10 @@ public class BrokerConnection implements HostState.Outbound {
         return host;
     }
 
+    public Settings settings() {
+        return settings;
+    }
+
     public boolean isConnected() {
         return connected;
     }

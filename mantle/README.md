@@ -99,12 +99,31 @@ the types the birth declared, tracked per device so two devices may both have a 
 UInt64 saturates at `Long.MAX_VALUE`. DataSets become Ignition datasets. `engUnit`, `engLow`, `engHigh` and
 `documentation` metric properties become the tag's.
 
-**Templates** flatten: instance `Motor1` with member `Speed` is the tag `Motor1/Speed`. Definitions create
-nothing.
+**Templates become real UDTs.** A template definition in an NBIRTH becomes an Ignition UDT type in the provider's
+`_types_` folder, and each instance becomes an instance of it, so a Perspective view can bind to the type rather
+than to one site's tags. Members keep their datatypes, units and the history default, and a write to a member
+still goes back as a partial template.
+
+An edge that sends instances without definitions gets the old behaviour: the instance flattens into a folder of
+tags (`Motor1/Speed`), which always works. So does a path that is **already** a folder — from an older build of
+this module, or from a person — because converting it would mean deleting their tags, and their alarms and
+history settings with them. The log says so once, and names the tag to delete if you want it rebuilt as a UDT.
 
 **Writes.** Writing a tag sends an NCMD or DCMD typed as the *birth* declared, not as the written value happens
 to be. A template member goes out as a partial instance containing only that member. The tag's value doesn't
 change on write; it changes when the edge reports it. Writes to an offline node are refused.
+
+## Status
+
+The gateway's web UI gets a **Mantle** page under Diagnostics: every connection, whether it is connected, the
+nodes and devices under it with their last birth, and the four numbers worth watching — messages, sequence gaps,
+rebirths requested, and decode failures. Gaps and decode failures both mean data was lost between the edge and
+the gateway, and both should sit at zero on a healthy link. Each node has a **Request rebirth** button.
+
+The same data is JSON at `GET /data/mantle/status`, and a rebirth is `POST /data/mantle/rebirth/<group>/<edge>`.
+Both take any authenticated gateway identity — the web UI's own session, or an
+[API token](https://www.docs.inductiveautomation.com/docs/8.3/platform/security/api-keys) for a monitoring
+system (`X-Ignition-API-Token`). Read needs READ, a rebirth needs WRITE, because it is a command to the field.
 
 ## Build and run
 
@@ -125,10 +144,11 @@ makes it unit-testable; `mqtt/BrokerConnection` is the session; `tags/ManagedTag
 
 ## What has been verified
 
-**By the integration suite** (`../integration`, a real Nautilus edge node against a live 8.3.9 gateway; 12 tests,
+**By the integration suite** (`../integration`, a real Nautilus edge node against a live 8.3.9 gateway; 16 tests,
 ~90 s): the tag tree and datatypes, templates as folders, history on by default and off for controls, values in
 both directions, a tag write becoming an NCMD the controller acts on, a template member write merging as a partial
-template, **a tag customized through `system.tag.configure` (history off, an alarm, documentation) keeping all of it
+template, **a template definition becoming a UDT type and its instance a UDT instance** (and an existing folder
+being left alone instead), **a tag customized through `system.tag.configure` (history off, an alarm, documentation) keeping all of it
 across a rebirth**, every reported change reaching the historian, `Bad_Stale` with the last value kept on an
 orderly death, a killed node, a keepalive timeout (45 s), **store-and-forward data landing in the historian stamped
 inside a gateway outage**, and a broker restart. The Nautilus edge's `primary-host` handshake also proves the STATE
@@ -138,7 +158,7 @@ certificate against a TCK-passing edge.
 becoming tag properties; alias-only DDATA with datatypes stripped; `is_transient` metrics starting with history
 off. (The Nautilus edge sends none of these, so the suite can't cover them yet.)
 
-**By unit test only** (`HostStateTest`, 21 cases): reordering, duplicate drop, gap expiry, seq wrap at 256, rebirth
+**By unit test only** (`HostStateTest` and `StatusRoutesTest`, 25 cases): reordering, duplicate drop, gap expiry, seq wrap at 256, rebirth
 debounce, stale-NDEATH rejection, host-stamped deaths, two-phase births, group filtering, unsigned widening.
 
 **Not yet exercised**: TLS, WebSocket and authenticated brokers; devices (DBIRTH/DDEATH) from a real edge; an

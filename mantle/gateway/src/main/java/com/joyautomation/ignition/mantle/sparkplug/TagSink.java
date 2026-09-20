@@ -1,6 +1,7 @@
 package com.joyautomation.ignition.mantle.sparkplug;
 
 import java.util.Date;
+import java.util.List;
 
 import org.eclipse.tahu.message.model.MetricDataType;
 
@@ -15,6 +16,44 @@ public interface TagSink {
      * disturb anything a user has customized on it.
      */
     void define(String path, MetricDataType type, MetricInfo info);
+
+    /**
+     * A Sparkplug template definition, as an Ignition UDT type. Called before any instance that refers to it,
+     * and nested types before the types that use them. Idempotent: a rebirth redeclares every type.
+     *
+     * @return true when the type is usable, so instances of it can be created. False sends the caller back to
+     *         flattening the instance into a folder, which always works.
+     */
+    default boolean defineType(String typeName, List<TypeMember> members) {
+        return false;
+    }
+
+    /**
+     * A template instance, as an instance of a UDT type that {@link #defineType} has already declared.
+     *
+     * @return false when the path cannot become a UDT instance — most often because it is already a folder of
+     *         tags from an older version of this module — in which case the caller flattens it as before.
+     */
+    default boolean defineInstance(String path, String typeName) {
+        return false;
+    }
+
+    /**
+     * One member of a UDT type: either a scalar (with a datatype) or a nested instance of another type
+     * (with {@code nestedTypeRef} set).
+     */
+    record TypeMember(String name, MetricDataType type, String nestedTypeRef, MetricInfo info) {
+        public boolean isNested() {
+            return nestedTypeRef != null;
+        }
+    }
+
+    /**
+     * A member of a UDT instance. Ignition builds the tag itself from the type, so there is nothing to define,
+     * but a write to it still has to become a command to the edge.
+     */
+    default void allowWrites(String path) {
+    }
 
     /**
      * Called once per birth, after every {@link #define} and before the first {@link #update}: return when the tags

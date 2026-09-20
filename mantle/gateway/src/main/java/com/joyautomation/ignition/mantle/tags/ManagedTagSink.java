@@ -15,6 +15,9 @@ import com.inductiveautomation.ignition.common.config.BasicBoundPropertySet;
 import com.inductiveautomation.ignition.common.config.BoundPropertySet;
 import com.inductiveautomation.ignition.common.model.values.QualityCode;
 import com.inductiveautomation.ignition.common.sqltags.model.types.DataType;
+import com.inductiveautomation.ignition.common.tags.config.BasicTagConfiguration;
+import com.inductiveautomation.ignition.common.tags.config.CollisionPolicy;
+import com.inductiveautomation.ignition.common.tags.config.TagConfiguration;
 import com.inductiveautomation.ignition.common.tags.config.TagConfigurationModel;
 import com.inductiveautomation.ignition.common.tags.config.properties.TagHistoryProps;
 import com.inductiveautomation.ignition.common.tags.config.properties.WellKnownTagProps;
@@ -29,6 +32,7 @@ import com.inductiveautomation.ignition.gateway.tags.managed.ManagedTagProviderC
 import com.joyautomation.ignition.mantle.sparkplug.HostState.NodeKey;
 import com.joyautomation.ignition.mantle.sparkplug.TagPaths;
 import com.joyautomation.ignition.mantle.sparkplug.TagSink;
+import com.joyautomation.ignition.mantle.sparkplug.TagSink.TypeMember;
 import com.joyautomation.ignition.mantle.sparkplug.TypeMapper;
 import org.eclipse.tahu.message.model.MetricDataType;
 import org.slf4j.Logger;
@@ -50,6 +54,8 @@ public class ManagedTagSink implements TagSink {
     private static final Object NULL = new Object();
     private static final long CLOCK_SKEW_WARN_MS = 5000;
     private static final long DEFINITION_TIMEOUT_MS = 30_000;
+    /** Ignition keeps a provider's UDT types here; it is not a tag folder and never holds Sparkplug data. */
+    private static final String TYPES_FOLDER = "_types_";
 
     private final GatewayContext context;
     private final String providerName;
@@ -60,6 +66,15 @@ public class ManagedTagSink implements TagSink {
     /** what the last birth said about a tag */
     private record Definition(DataType dataType, MetricInfo info) {
     }
+
+    /** UDT types declared this session, by name, with the members they were built from */
+    private final Map<String, List<TypeMember>> definedTypes = new ConcurrentHashMap<>();
+    /** UDT instance path -> type name, or FLATTENED when it could not become one */
+    private final Map<String, String> instances = new ConcurrentHashMap<>();
+    private final Set<String> flattenWarned = ConcurrentHashMap.newKeySet();
+    /** paths that already have a write handler registered */
+    private final Set<String> writable = ConcurrentHashMap.newKeySet();
+    private static final String FLATTENED = "\u0000flattened";
 
     /** paths of the tags that were already in the provider when we started */
     private final Set<String> existing = ConcurrentHashMap.newKeySet();
@@ -93,6 +108,7 @@ public class ManagedTagSink implements TagSink {
             // values older than a tag's current one go to history without moving the live value backwards,
             // which is what a store-and-forward flush needs
             .allowBackfill(true)
+            .hasDataTypes(true)
             .build();
         this.provider = context.getTagManager().getOrCreateManagedProvider(configuration);
         loadExisting();
@@ -159,12 +175,132 @@ public class ManagedTagSink implements TagSink {
     private void collect(String parentPath, TagConfigurationModel model) {
         for (TagConfigurationModel child : model.getChildren()) {
             String path = parentPath.isEmpty() ? child.getName() : parentPath + "/" + child.getName();
+            if (parentPath.isEmpty() && TYPES_FOLDER.equals(child.getName())) {
+                continue; // UDT definitions, not data from an edge node
+            }
             if (child.getType() == TagObjectType.AtomicTag) {
                 existing.add(path);
             } else {
                 collect(path, child);
             }
         }
+    }
+
+    /**
+     * A Sparkplug template definition becomes an Ignition UDT type under {@code _types_}. The managed provider
+     * only hosts types at all because of {@code hasDataTypes(true)} above, and its own configureTag() cannot
+     * build one — that has to go through the tag configuration API, the same route the Designer uses.
+     */
+    @Override
+    public boolean defineType(String typeName, List<TypeMember> members) {
+        String path = TYPES_FOLDER + "/" + TagPaths.segment(typeName);
+        List<TypeMember> previous = definedTypes.get(typeName);
+        if (members.equals(previous)) {
+            return true; // a rebirth saying the same thing
+        }
+        try {
+            TagConfiguration type = BasicTagConfiguration.createNew(TagPathParser.parse(providerName, path));
+            type.setType(TagObjectType.UdtType);
+            for (TypeMember member : members) {
+                TagConfiguration child =
+                    BasicTagConfiguration.createNew(TagPathParser.parse(providerName, path + "/" + member.name()));
+                if (member.isNested()) {
+                    child.setType(TagObjectType.UdtInstance);
+                    child.set(WellKnownTagProps.TypeId, member.nestedTypeRef());
+                } else {
+                    child.setType(TagObjectType.AtomicTag);
+                    child.set(WellKnownTagProps.DataType, TypeMapper.toIgnition(member.type()));
+                    applyMetadata(child, member.info());
+                }
+                type.addChild(child);
+            }
+            QualityCode result = save(type);
+            if (result != null && result.isNotGood()) {
+                logger.warn("Could not create UDT type '{}' in '{}': {}. Instances of it will be folders of tags "
+                    + "instead.", typeName, providerName, result);
+                definedTypes.remove(typeName);
+                return false;
+            }
+            definedTypes.put(typeName, List.copyOf(members));
+            logger.info("UDT type '{}' in '{}' has {} members", typeName, providerName, members.size());
+            return true;
+        } catch (Exception e) {
+            logger.warn("Could not create UDT type '{}' in '{}'; instances of it will be folders of tags instead",
+                typeName, providerName, e);
+            definedTypes.remove(typeName);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean defineInstance(String path, String typeName) {
+        String known = instances.get(path);
+        if (known != null) {
+            return known.equals(typeName);
+        }
+        try {
+            // A path that is already a folder of tags (an older version of this module made it that way, or a
+            // person did) cannot be turned into a UDT instance without destroying what is there. Say so once and
+            // leave it flattened; deleting a user's tags to change their shape is not ours to do.
+            TagObjectType current = typeOf(path);
+            if (current != null && current != TagObjectType.UdtInstance) {
+                if (flattenWarned.add(path)) {
+                    logger.info("{} already exists as {} in '{}', so it stays a folder of tags. Delete it if you "
+                        + "want it rebuilt as a UDT instance of '{}'.", path, current, providerName, typeName);
+                }
+                instances.put(path, FLATTENED);
+                return false;
+            }
+            TagConfiguration instance = BasicTagConfiguration.createNew(TagPathParser.parse(providerName, path));
+            instance.setType(TagObjectType.UdtInstance);
+            instance.set(WellKnownTagProps.TypeId, typeName);
+            QualityCode result = save(instance);
+            if (result != null && result.isNotGood()) {
+                logger.warn("Could not create UDT instance {} of '{}': {}; it stays a folder of tags",
+                    path, typeName, result);
+                instances.put(path, FLATTENED);
+                return false;
+            }
+            instances.put(path, typeName);
+            return true;
+        } catch (Exception e) {
+            logger.warn("Could not create UDT instance {} of '{}'; it stays a folder of tags", path, typeName, e);
+            instances.put(path, FLATTENED);
+            return false;
+        }
+    }
+
+    /** The tag object type at a path today, or null when nothing is there. */
+    private TagObjectType typeOf(String path) {
+        try {
+            TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+            if (tagProvider == null) {
+                return null;
+            }
+            List<TagConfigurationModel> configs = tagProvider
+                .getTagConfigsAsync(List.of(TagPathParser.parse(providerName, path)), false, false)
+                .get(15, TimeUnit.SECONDS);
+            if (configs.isEmpty()) {
+                return null;
+            }
+            TagObjectType type = configs.get(0).getType();
+            return type == TagObjectType.Unknown ? null : type;
+        } catch (Exception e) {
+            logger.debug("Could not read the tag type at {}", path, e);
+            return null;
+        }
+    }
+
+    /** Saves one tag configuration through the provider, merging rather than replacing what a user has set. */
+    private QualityCode save(TagConfiguration config) throws Exception {
+        TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+        if (tagProvider == null) {
+            return QualityCode.Bad_NotFound;
+        }
+        List<QualityCode> results = tagProvider
+            .saveTagConfigsAsync(List.of(config), CollisionPolicy.MergeOverwrite)
+            .get(30, TimeUnit.SECONDS);
+        return results.isEmpty() ? null : results.get(0);
     }
 
     @Override
@@ -182,13 +318,18 @@ public class ManagedTagSink implements TagSink {
             // created, or retyped: either way the gateway is about to (re)initialize it
             pending.add(new Pending(path, dataType));
         }
-        if (previous == null && info.writable()) {
-            provider.registerWriteHandler(path, (tagPath, value) ->
-                write(path, value) ? QualityCode.Good : QualityCode.Bad_Failure);
+        if (info.writable()) {
+            allowWrites(path);
         }
 
         BoundPropertySet props = new BasicBoundPropertySet();
         props.set(WellKnownTagProps.DataType, dataType);
+        applyMetadata(props, info);
+        provider.configureTag(path, props);
+    }
+
+    /** Units, range, documentation and the history default — everything a birth says about a metric. */
+    private void applyMetadata(BoundPropertySet props, MetricInfo info) {
         if (info.engUnit() != null) {
             props.set(WellKnownTagProps.EngUnit, info.engUnit());
         }
@@ -213,7 +354,6 @@ public class ManagedTagSink implements TagSink {
                 props.set(TagHistoryProps.HistoryTimeDeadbandUnits, TimeUnits.MS);
             }
         }
-        provider.configureTag(path, props);
     }
 
     /**
@@ -267,6 +407,14 @@ public class ManagedTagSink implements TagSink {
         }
         List<String> historians = context.getTagHistoryManager().getTagHistoryProviders();
         return historians.isEmpty() ? null : historians.get(0);
+    }
+
+    @Override
+    public void allowWrites(String path) {
+        if (writable.add(path)) {
+            provider.registerWriteHandler(path, (tagPath, value) ->
+                write(path, value) ? QualityCode.Good : QualityCode.Bad_Failure);
+        }
     }
 
     @Override

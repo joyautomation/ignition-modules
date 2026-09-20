@@ -2,6 +2,7 @@ package com.joyautomation.ignition.mantle.sparkplug;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.joyautomation.ignition.mantle.sparkplug.TagSink.MetricInfo;
+import com.joyautomation.ignition.mantle.status.ModuleStatus;
 import org.eclipse.tahu.message.SparkplugBPayloadDecoder;
 import org.eclipse.tahu.message.model.Metric;
 import org.eclipse.tahu.message.model.Metric.MetricBuilder;
@@ -73,6 +75,8 @@ public class HostState {
 
     private static final class DeviceState {
         boolean online;
+        Long birthMs;
+        int metrics;
     }
 
     private static final class NodeState {
@@ -91,6 +95,12 @@ public class HostState {
         long rebirthAskedAt;
         long seq;
         long bdSeq = -1;
+        Long birthMs;
+        int metrics;
+        /** templateRef -> usable as an Ignition UDT type. Absent means "flatten it". */
+        final Map<String, Boolean> udtTypes = new HashMap<>();
+        /** instance tag path -> really became a UDT instance (rather than being flattened) */
+        final Map<String, Boolean> udtInstances = new HashMap<>();
 
         NodeState(NodeKey key) {
             this.key = key;
@@ -288,6 +298,8 @@ public class HostState {
         }
         registerAliases(ns, "", p.getMetrics());
         int count = applyBirth(ns, "", p);
+        ns.birthMs = ts.getTime();
+        ns.metrics = count;
         sink.update(metaPath(ns, "", "Online"), true, ts, false);
         sink.update(metaPath(ns, "", "Last Birth"), ts, ts, false);
         logger.info("Node birth {}/{} bdSeq={} metrics={}", ns.key.group(), ns.key.edge(), ns.bdSeq, count);
@@ -299,6 +311,8 @@ public class HostState {
         Date ts = payloadTime(p);
         registerAliases(ns, device, p.getMetrics());
         int count = applyBirth(ns, device, p);
+        dev.birthMs = ts.getTime();
+        dev.metrics = count;
         sink.update(metaPath(ns, device, "Online"), true, ts, false);
         sink.update(metaPath(ns, device, "Last Birth"), ts, ts, false);
         logger.info("Device birth {}/{}/{} metrics={}", ns.key.group(), ns.key.edge(), device, count);
@@ -307,9 +321,48 @@ public class HostState {
     /** Shape first, then values: see {@link TagSink#awaitDefinitions()}. */
     private int applyBirth(NodeState ns, String device, SparkplugBPayload p) {
         defineMeta(ns, device);
+        harvestTypes(ns, p.getMetrics());
         applyMetrics(ns, device, p, Pass.DEFINE);
         sink.awaitDefinitions();
         return applyMetrics(ns, device, p, Pass.VALUES);
+    }
+
+    /**
+     * Turns the template definitions a birth carries into UDT types, in the order the edge sent them — which
+     * the spec's own convention puts nested types before the types that use them. A definition the sink can't
+     * make a type from is simply absent from the map, and instances of it flatten into folders as before.
+     */
+    private void harvestTypes(NodeState ns, List<Metric> metrics) {
+        for (Metric m : metrics) {
+            if (m == null || !m.hasName() || !TypeMapper.isTemplate(m.getDataType())
+                || !(m.getValue() instanceof Template t) || !t.isDefinition()) {
+                continue;
+            }
+            String typeName = m.getName();
+            List<TagSink.TypeMember> members = new ArrayList<>();
+            boolean usable = true;
+            for (Metric member : t.getMetrics()) {
+                if (member == null || !member.hasName()) {
+                    continue;
+                }
+                if (TypeMapper.isTemplate(member.getDataType())) {
+                    // a member that is itself a UDT: the spec carries it as a templateRef to its own definition
+                    String ref = member.getValue() instanceof Template nested ? nested.getTemplateRef() : null;
+                    if (ref == null || !Boolean.TRUE.equals(ns.udtTypes.get(ref))) {
+                        usable = false; // a nested type we never got a definition for
+                        break;
+                    }
+                    members.add(new TagSink.TypeMember(member.getName(), null, ref, MetricInfo.DEFAULT));
+                } else if (TypeMapper.toIgnition(member.getDataType()) == null) {
+                    usable = false;
+                    break;
+                } else {
+                    members.add(new TagSink.TypeMember(member.getName(), member.getDataType(), null,
+                        infoOf(member.getName(), member)));
+                }
+            }
+            ns.udtTypes.put(typeName, usable && !members.isEmpty() && sink.defineType(typeName, members));
+        }
     }
 
     private void defineMeta(NodeState ns, String device) {
@@ -546,7 +599,7 @@ public class HostState {
                 continue;
             }
             Date ts = m.getTimestamp() != null ? m.getTimestamp() : payloadTs;
-            count += applyMetric(ns, scope, name, name, m, ts, pass, List.of());
+            count += applyMetric(ns, scope, name, name, m, ts, pass, List.of(), false);
         }
         return count;
     }
@@ -558,10 +611,19 @@ public class HostState {
      * @param chain the template instances above this metric, outermost first
      */
     private int applyMetric(NodeState ns, String device, String pathName, String ownName, Metric m, Date ts,
-                            Pass pass, List<TemplateStep> chain) {
+                            Pass pass, List<TemplateStep> chain, boolean inUdt) {
         if (TypeMapper.isTemplate(m.getDataType())) {
             if (!(m.getValue() instanceof Template template) || template.isDefinition()) {
-                return 0; // definitions describe a shape; only instances carry values
+                return 0; // definitions describe a shape (harvestTypes has them); only instances carry values
+            }
+            String instancePath = TagPaths.metric(ns.key.group(), ns.key.edge(), device, pathName);
+            if (chain.isEmpty() && Boolean.TRUE.equals(ns.udtTypes.get(template.getTemplateRef()))) {
+                // A top-level instance of a type we declared: one UDT instance, and Ignition builds the members.
+                // Nested instances need no call of their own — they come with their parent's type.
+                if (pass == Pass.DEFINE) {
+                    ns.udtInstances.put(instancePath, sink.defineInstance(instancePath, template.getTemplateRef()));
+                }
+                inUdt = Boolean.TRUE.equals(ns.udtInstances.get(instancePath));
             }
             List<TemplateStep> inner = new ArrayList<>(chain);
             inner.add(new TemplateStep(ownName, template.getTemplateRef(), template.getVersion()));
@@ -569,7 +631,7 @@ public class HostState {
             for (Metric member : template.getMetrics()) {
                 if (member != null && member.hasName()) {
                     count += applyMetric(ns, device, pathName + "/" + member.getName(), member.getName(), member, ts,
-                        pass, inner);
+                        pass, inner, inUdt);
                 }
             }
             return count;
@@ -580,7 +642,16 @@ public class HostState {
             if (TypeMapper.toIgnition(m.getDataType()) == null) {
                 return 0;
             }
-            sink.define(path, m.getDataType(), infoOf(pathName, m));
+            // A member of a UDT instance already exists: Ignition built it from the type. Declaring it again
+            // would fight the type, so it only gets what the type cannot give it — a way to write back.
+            MetricInfo info = infoOf(pathName, m);
+            if (inUdt) {
+                if (info.writable()) {
+                    sink.allowWrites(path);
+                }
+            } else {
+                sink.define(path, m.getDataType(), info);
+            }
             refsByPath.put(path, new MetricRef(ns.key, device, ownName, m.getDataType(), chain));
             return 1;
         }
@@ -675,6 +746,44 @@ public class HostState {
     }
 
     // ── introspection ────────────────────────────────────────────────────────
+
+    /** A consistent picture of every node, taken under the lock and handed back as plain data. */
+    public List<ModuleStatus.Node> nodeStatus() {
+        synchronized (lock) {
+            return nodes.values().stream()
+                .sorted(Comparator.comparing((NodeState n) -> n.key.group()).thenComparing(n -> n.key.edge()))
+                .map(ns -> new ModuleStatus.Node(ns.key.group(), ns.key.edge(), ns.online, ns.bdSeq, ns.birthMs,
+                    ns.metrics, ns.rebirthAsked, ns.devices.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .map(e -> new ModuleStatus.Device(e.getKey(), e.getValue().online, e.getValue().birthMs,
+                            e.getValue().metrics))
+                        .toList()))
+                .toList();
+        }
+    }
+
+    public ModuleStatus.Counters counters() {
+        synchronized (lock) {
+            return new ModuleStatus.Counters(messages.get(), seqGaps.get(), rebirthsRequested.get(),
+                decodeFailures.get(), (int) nodes.values().stream().filter(n -> n.online).count(), nodes.size());
+        }
+    }
+
+    /** Ask one node to birth again, from the status page's button. False when we have never heard of it. */
+    public boolean requestRebirth(String group, String edge) {
+        NodeKey key = new NodeKey(group, edge);
+        synchronized (lock) {
+            NodeState ns = nodes.get(key);
+            if (ns == null) {
+                return false;
+            }
+            // an operator pressing the button means now, whatever the debounce thinks
+            ns.rebirthAsked = false;
+            askRebirth(ns);
+        }
+        flushRebirths();
+        return true;
+    }
 
     public boolean isOnline(String group, String edge) {
         synchronized (lock) {

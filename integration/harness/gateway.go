@@ -172,6 +172,20 @@ func (g *Gateway) Config(rel string) (map[string]any, error) {
 	return out.Configs[0], nil
 }
 
+// ConfigTree is Config including a tag's children, for a UDT type or a folder.
+func (g *Gateway) ConfigTree(rel string) (map[string]any, error) {
+	var out struct {
+		Configs []map[string]any `json:"configs"`
+	}
+	if err := g.call(map[string]any{"op": "config", "path": g.Path(rel), "recursive": true}, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Configs) != 1 {
+		return nil, fmt.Errorf("gateway config %s: %d results", rel, len(out.Configs))
+	}
+	return out.Configs[0], nil
+}
+
 // Configure merges properties into existing tags under a folder, through
 // system.tag.configure: the same route a person's edit takes, so what it
 // sets lands in the tag's user layer.
