@@ -1,0 +1,87 @@
+def doPost(request, session):
+	# One endpoint, dispatched on "op", so the Go harness needs a single URL. Access is gated in config.json
+	# (require-auth + the Administrator role), not here: this grants nothing a gateway login doesn't.
+	#
+	# Everything is a thin skin over system.tag.*, on purpose. The tests should observe and poke the gateway the
+	# way a project script or the Designer does, not through a side door into the module.
+	import system
+	from java.util import Date
+
+	body = request['data']
+	if not isinstance(body, dict):
+		body = system.util.jsonDecode(request['postData'])
+	op = body.get('op')
+
+	def plain(v):
+		# JSON-safe view of whatever the tag system hands back
+		if v is None or isinstance(v, (bool, int, long, float, basestring)):
+			return v
+		if isinstance(v, Date):
+			return v.getTime()
+		if isinstance(v, dict):
+			return dict((str(k), plain(x)) for k, x in v.items())
+		try:
+			return [plain(x) for x in v]
+		except TypeError:
+			return str(v)
+
+	def qv(q):
+		ts = q.timestamp
+		return {
+			'value': plain(q.value),
+			'quality': str(q.quality),
+			'good': q.quality.isGood(),
+			'timestamp': ts.getTime() if ts is not None else None,
+		}
+
+	if op == 'ping':
+		return {'json': {'ok': True, 'time': system.date.now().getTime()}}
+
+	if op == 'read':
+		return {'json': {'values': [qv(q) for q in system.tag.readBlocking(body['paths'])]}}
+
+	if op == 'write':
+		results = system.tag.writeBlocking(body['paths'], body['values'], 10000)
+		return {'json': {'results': [str(r) for r in results], 'good': [r.isGood() for r in results]}}
+
+	if op == 'config':
+		configs = system.tag.getConfiguration(body['path'], bool(body.get('recursive', False)))
+		return {'json': {'configs': plain(configs)}}
+
+	if op == 'configure':
+		# The same call a person's edit ends up as: properties land in the tag's user layer.
+		results = system.tag.configure(body['basePath'], body['tags'], body.get('collisionPolicy', 'm'))
+		return {'json': {'results': [str(r) for r in results], 'good': [r.isGood() for r in results]}}
+
+	if op == 'browse':
+		results = system.tag.browse(body['path'], body.get('filter', {}))
+		return {'json': {'results': [
+			{'name': str(r['name']), 'path': str(r['fullPath']), 'tagType': str(r['tagType']),
+			 'hasChildren': bool(r['hasChildren'])} for r in results.getResults()]}}
+
+	if op == 'delete':
+		results = system.tag.deleteTags(body['paths'])
+		return {'json': {'results': [str(r) for r in results]}}
+
+	if op == 'history':
+		ds = system.tag.queryTagHistory(
+			paths=body['paths'],
+			startDate=Date(long(body['start'])),
+			endDate=Date(long(body['end'])),
+			returnSize=-1,
+			includeBoundingValues=bool(body.get('bounding', False)),
+			noInterpolation=True,
+			ignoreBadQuality=bool(body.get('ignoreBad', False)),
+			returnFormat='Tall',
+		)
+		rows = []
+		for i in range(ds.getRowCount()):
+			rows.append({
+				'path': str(ds.getValueAt(i, 'path')),
+				'value': plain(ds.getValueAt(i, 'value')),
+				'quality': str(ds.getValueAt(i, 'quality')),
+				'timestamp': ds.getValueAt(i, 'timestamp').getTime(),
+			})
+		return {'json': {'rows': rows}}
+
+	return {'json': {'error': 'unknown op: %s' % op}}

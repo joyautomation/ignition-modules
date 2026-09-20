@@ -1,0 +1,7 @@
+{
+  "title": "Integration test API",
+  "description": "Test support: tag read/write/configure/history over HTTP for the integration tests. Requires an Administrator login. For dev and CI gateways only.",
+  "parent": "",
+  "enabled": true,
+  "inheritable": false
+}

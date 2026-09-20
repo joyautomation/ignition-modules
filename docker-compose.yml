@@ -1,0 +1,40 @@
+# Dev gateway + broker for building and testing the modules in this repo.
+#
+#   docker compose up -d
+#   gateway: http://localhost:8088  (admin / password)
+#   broker:  localhost:1883
+#
+# Install a module build with scripts/install-module.sh
+
+services:
+  gateway:
+    image: inductiveautomation/ignition:8.3.9
+    ports:
+      - "8088:8088"
+    environment:
+      ACCEPT_IGNITION_EULA: "Y"
+      GATEWAY_ADMIN_USERNAME: admin
+      GATEWAY_ADMIN_PASSWORD: password
+      IGNITION_EDITION: standard
+      # third-party modules in user-lib/modules are picked up on first boot of a fresh data volume, provided
+      # their license and certificate are accepted here
+      ACCEPT_MODULE_LICENSES: "com.joyautomation.mantle"
+      ACCEPT_MODULE_CERTS: "com.joyautomation.mantle"
+      TZ: America/Chicago
+    command: >
+      -n joy-dev
+      --
+      -Dignition.allowunsignedmodules=true
+    volumes:
+      - gateway-data:/usr/local/bin/ignition/data
+    depends_on:
+      - broker
+
+  broker:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    command: mosquitto -c /mosquitto-no-auth.conf
+
+volumes:
+  gateway-data:

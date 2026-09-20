@@ -1,0 +1,45 @@
+# The edge node Mantle for Ignition is integration-tested against: a real
+# Nautilus controller publishing real Sparkplug B, driven by the Go tests in
+# the parent directory (mantle_test.go) through the tag API below.
+#
+# The harness runs this with NAUTILUS_ADDR and a generated copy of this file
+# (broker, node id, bdseq path), so several can run side by side. It also
+# runs by hand against the dev stack:   nautilus run
+name: mantle-edge
+
+server:
+  addr: "localhost:18080"
+
+tasks:
+  - program: device.st
+    scan: 100ms
+
+tags:
+  - { name: LevelSP,     role: setpoint, init: 10.0,  unit: "ft", desc: "Level setpoint; LevelFt follows it" }
+  - { name: LevelFt,     role: state,    init: 10.0,  unit: "ft", desc: "Level" }
+  - { name: CountEnable, role: setpoint, init: false, desc: "Counter runs while true" }
+  # A manifest seeds every scalar number as a REAL, so this births as a Double even though device.st declares
+  # it DINT. Integer coverage comes from P101.Starts, whose type comes from the TYPE declaration.
+  - { name: Counter,     role: state,    init: 0,     desc: "Scans counted while enabled" }
+  - { name: Mode,        role: state,    init: "IDLE", desc: "IDLE or COUNTING" }
+  - { name: P101,        role: state,    type: Motor, desc: "A UDT, published as a Sparkplug template" }
+  - { name: P101_Enable, role: setpoint, init: false, desc: "Run command for P101" }
+
+driver:
+  type: memory
+
+sparkplug:
+  broker: tcp://localhost:1883
+  group-id: MantleIT
+  edge-node: edge1
+  bdseq-file: .run/edge1.bdseq
+  # Hold data while the host is away and replay it marked historical: the
+  # path that has to land in Ignition's historian with its original times.
+  primary-host: joy-dev
+  store-forward: 2000
+  # No deadband, so a test sees every change it causes.
+  default-class: { deadband: 0, max-interval: 10s }
+  classes:
+    every: { every-change: true }
+  metric-classes:
+    every: ["Counter", "Mode", "P101*"]

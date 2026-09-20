@@ -1,0 +1,8 @@
+.gradle/
+build/
+*.modl
+.idea/
+*.iml
+.vscode/
+node_modules/
+.claude/settings.local.json
