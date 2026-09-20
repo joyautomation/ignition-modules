@@ -17,8 +17,13 @@ import com.inductiveautomation.ignition.gateway.web.nav.WebUiComponent;
 public class MqttConnectionExtensionPoint extends AbstractExtensionPoint<BrokerConnectionConfig> {
     public static final String TYPE_ID = "MQTT";
 
+    /**
+     * The two strings after the type id are bundle KEYS, not text: the gateway resolves them through
+     * BundleUtil, and renders an unresolved one as {@code ¿Mantle.Connection.MQTT.name?} on the page. They
+     * live in Mantle.properties, which MantleGatewayHook registers.
+     */
     public MqttConnectionExtensionPoint() {
-        super(TYPE_ID, "MQTT Broker", "A Sparkplug B host application connected to one MQTT broker.");
+        super(TYPE_ID, "Mantle.Connection.MQTT.name", "Mantle.Connection.MQTT.desc");
     }
 
     @Override

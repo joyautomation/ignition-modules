@@ -8,6 +8,7 @@ import com.inductiveautomation.ignition.gateway.config.ExtensionPoint;
 import com.inductiveautomation.ignition.gateway.config.ExtensionPointCollection;
 import com.inductiveautomation.ignition.gateway.config.ExtensionPointConfig;
 import com.inductiveautomation.ignition.gateway.config.ResourceTypeMeta;
+import com.inductiveautomation.ignition.gateway.config.actions.ResourceActionSet;
 import com.joyautomation.ignition.mantle.MantleGatewayHook;
 
 /** The connection types this module offers, and the resource type they are stored under. */
@@ -29,6 +30,16 @@ public final class SparkplugConnections implements ExtensionPointCollection<Exte
             .categoryName("Sparkplug Connections")
             .description("Sparkplug B host connections. Every metric that arrives becomes a tag.")
             .withDefaultProfile(SparkplugConnectionProfile.DEFAULT)
+            // Without this the type defaults to ResourceActionSet.EMPTY and the gateway's configuration REST
+            // API does not serve it at all — no list, no create, no edit, for any UI or script.
+            .withActionSet(ResourceActionSet.DEFAULT)
+            // ...and this is what puts the type on the gateway's configuration REST API. Without a route
+            // delegate the type has no routes at all, whatever else is configured, so nothing — no UI, no
+            // script, no other module — can list or create a connection.
+            .buildRouteDelegate(routes -> routes
+                .profileSchema(SparkplugConnectionProfile.class)
+                .openApiGroupName("Mantle")
+                .openApiTagName("Sparkplug Connections"))
             .build();
     }
 

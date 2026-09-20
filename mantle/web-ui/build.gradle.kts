@@ -11,7 +11,7 @@ java {
 }
 
 // webpack writes into this directory, and the java plugin folds it into the jar; the gateway then serves
-// mounted/mantleStatus.js at /res/mantle/mantleStatus.js (see MantleGatewayHook.getMountedResourceFolder).
+// mounted/mantle.js at /res/mantle/mantle.js (see MantleGatewayHook.getMountedResourceFolder).
 val generated = layout.buildDirectory.dir("generated-resources")
 
 node {

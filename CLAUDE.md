@@ -25,6 +25,30 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
   (the `ignitionsdk` group is poms only). System Java is a JRE; `javap` is at
   `~/.gradle/jdks/eclipse_adoptium-11-amd64-linux/jdk-*/bin/javap` and reads the Java 17 classes fine.
   Examples: `github.com/inductiveautomation/ignition-sdk-examples`, branch `ignition-8.3`.
+- **The gateway serves source maps for its own web UI, and they carry `sourcesContent`.** This is the only
+  real documentation of the gateway's React API. `/res/sys/js/IgnitionGatewayLib.js.map` unpacks to the full
+  TypeScript of `@inductiveautomation/ignition-gateway-lib` (`src/index.ts` is its export list); every module
+  bundle has one too (`/res/<module>/js/web-ui/<name>.js.map`), so IA's own pages read as worked examples —
+  `historian.js.map` gives a ~40-line `ExtensionPointDataGridPage` usage. The bare specifiers resolve through
+  the SystemJS import map printed inline in `GET /app`.
+- **A config page is a React page, but almost none of it is yours.** `ExtensionPointDataGridPage` from
+  `@inductiveautomation/ignition-gateway-lib` *is* the gateway's config page — table, create wizard, edit,
+  delete, enable/disable, config-mode banner — and the add/edit form inside it is generated from the JSON
+  Schema the gateway derives from the annotations on the settings record. Declare the two
+  `@inductiveautomation/*` packages as webpack `externals` and never install them; they exist only on IA's
+  private registry, and the gateway supplies them at runtime. What a module must still write is the *list*:
+  which columns, the page title, the blank state (`mantle/web-ui/src/ConnectionsPage.tsx`).
+- **A resource type with no route delegate has no REST routes at all**, so no UI — IA's or yours — can list or
+  create one. `ResourceTypeMeta.newExtensionPointBuilder(...)` needs *both* `.withActionSet(...)` (it defaults
+  to `EMPTY`) and `.buildRouteDelegate(routes -> routes.profileSchema(...))`. The extension-point builder has
+  `profileSchema`, not `configSchema`. Symptom: `/data/api/v1/resources/list/<module>/<type>` 404s while an IA
+  module's own type 200s.
+- **Wicket is gone in 8.3** — zero classes in `gateway-api-8.3.9.jar`. The 8.1 config-page mechanism does not
+  exist, and no amount of searching for it will help.
+- **An extension point's name and description are bundle KEYS, not text.** `AbstractExtensionPoint`'s
+  constructor takes `nameKey`/`descriptionKey`; an unresolved one renders as `¿Mantle.Connection.MQTT.name?`
+  on the page. Register the bundle in `setup()` — `BundleUtil.get().addBundle("Mantle", Hook.class, "Mantle")`
+  — and put the strings in `Mantle.properties` beside the hook class.
 - **Renaming a module's `.modl` strands the gateway on the old file.** `data/modules.json` records each module's
   file *path*, so a changed `ignitionModule.fileName` leaves the gateway loading the previous build while the
   install reports success. `scripts/lib.sh` `repoint_module` fixes the registry and deletes the stale copy.

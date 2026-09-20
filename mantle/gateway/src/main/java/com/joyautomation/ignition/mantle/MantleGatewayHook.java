@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiPredicate;
 
+import com.inductiveautomation.ignition.common.BundleUtil;
 import com.inductiveautomation.ignition.common.licensing.LicenseState;
 import com.inductiveautomation.ignition.common.resourcecollection.ResourceType;
 import com.inductiveautomation.ignition.gateway.config.DecodedResource;
@@ -35,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 public class MantleGatewayHook extends AbstractGatewayModuleHook {
     public static final String MODULE_ID = "com.joyautomation.mantle";
+    /** Both the bundle's key prefix and the basename of Mantle.properties, which sits next to this class. */
+    private static final String BUNDLE = "Mantle";
     private static final Logger logger = LoggerFactory.getLogger("Mantle");
     /** The Historian module's provider config, so the status page can link to it when there is no historian. */
     private static final ResourceType HISTORIAN_PROVIDER =
@@ -56,10 +59,15 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
     @Override
     public void setup(GatewayContext context) {
         this.context = context;
+        // Mantle.properties, next to this class. The gateway asks for several user-visible strings by key
+        // rather than taking text — an extension point's name and description among them — and renders an
+        // unresolved key as ¿the.key?, so this has to happen before anything registers.
+        BundleUtil.get().addBundle(BUNDLE, MantleGatewayHook.class, BUNDLE);
         // Tell the gateway this resource type exists. Without it the type is invisible to the configuration
         // REST API — and so to any UI built on it — and connections can only be created by editing files.
         context.getConfigurationManager().getResourceTypeMetaRegistry().register(SparkplugConnections.meta());
         registerStatusPage(context);
+        registerConnectionsPage(context);
         connections = NamedResourceHandler.newBuilder(SparkplugConnections.meta())
             .context(context)
             .onInitialResources(resources -> resources.forEach(this::startConnection))
@@ -88,6 +96,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
             sinks.values().forEach(ManagedTagSink::shutdown);
             sinks.clear();
         }
+        BundleUtil.get().removeBundle(BUNDLE);
         logger.info("Mantle module stopped.");
     }
 
@@ -150,27 +159,40 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
 
     // ── the gateway's own web UI ──────────────────────────────────────────────
 
+    /** One bundle for the whole module; each page below names one of its exports. */
+    private SystemJsModule bundle() {
+        return new SystemJsModule(MODULE_ID, "/res/mantle/mantle.js");
+    }
+
+    /**
+     * The configuration page, under Connections — where an administrator already goes to point the gateway at
+     * something.
+     *
+     * <p>A module has to supply the page itself; the gateway does not put a resource type in its navigation on
+     * its own. But the page is nearly all Inductive's: {@code MantleConnections} is a thin wrapper around
+     * their {@code ExtensionPointDataGridPage}, the same component behind Historians and OPC UA Connections,
+     * and the add/edit form inside it is generated from the schema the gateway derives from the annotations
+     * on {@link com.joyautomation.ignition.mantle.config.BrokerConnectionConfig}. Nothing renders, though,
+     * unless the resource type has a route delegate — see {@link SparkplugConnections#meta()}.
+     */
+    private void registerConnectionsPage(GatewayContext context) {
+        context.getWebResourceManager().getNavigationModel().getConnections()
+            .addCategory("mantle", category -> category
+                .label("Sparkplug")
+                .addPage("Connections", page -> page
+                    .title("Sparkplug Connections")
+                    .requiredPermission(PermissionType.READ)
+                    // the page edits connections, so the gateway should send an operator here from the
+                    // resource type itself — a search hit, or a link out of another page
+                    .addAssociatedResourceType(SparkplugConnections.RESOURCE_TYPE)
+                    .mount("/connections/mantle-sparkplug", "MantleConnections", bundle())));
+    }
+
     /**
      * Puts a Mantle page in the gateway's own navigation, under Diagnostics — which is where an administrator
      * looks when they want to know whether something is working, and this page answers exactly that.
      */
-    /**
-     * NOT MOUNTED, and the reason is worth keeping. Ignition does not hand a module a configuration page: every
-     * one in the gateway is a React page its module wrote (DatabaseConnectionsPage, DeviceConnections,
-     * OpcConnections…). What an extension point provides is the ADD/EDIT form that such a page renders —
-     * {@link MqttConnectionExtensionPoint#getWebUiComponent} — not the page itself. Mounting that form directly
-     * on a nav route serialises a component with no "type" field, and the gateway renders
-     * "Web UI Component type not found".
-     *
-     * <p>So a connections page means writing one, the way the status page is written, against the configuration
-     * REST API. Until then connections are files, and the status page says so.
-     */
-    private void registerConnectionsPage(GatewayContext context) {
-        // intentionally empty
-    }
-
     private void registerStatusPage(GatewayContext context) {
-        SystemJsModule bundle = new SystemJsModule(MODULE_ID, "/res/mantle/mantleStatus.js");
         context.getWebResourceManager().getNavigationModel().getDiagnostics()
             .addCategory("mantle", category -> category
                 .label("Mantle")
@@ -178,7 +200,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
                     .title("Mantle — Sparkplug status")
                     .requiredPermission(PermissionType.READ)
                     // "MantleStatus" is the named export of the UMD bundle
-                    .mount("/diagnostics/mantle-status", "MantleStatus", bundle)));
+                    .mount("/diagnostics/mantle-status", "MantleStatus", bundle())));
     }
 
     /** Where the status page's bundle is served from: /res/mantle/<file>, out of the jar's "mounted" folder. */

@@ -314,7 +314,7 @@ func TestTheStatusPageIsRegisteredAndItsRouteIsProtected(t *testing.T) {
 	}
 
 	// the bundle the page is, and the data it reads
-	if code := getStatus(t, "/res/mantle/mantleStatus.js"); code != 200 {
+	if code := getStatus(t, "/res/mantle/mantle.js"); code != 200 {
 		t.Errorf("the page's bundle is not being served: HTTP %d", code)
 	}
 	if code := getStatus(t, "/data/mantle/status"); code != 401 {
