@@ -122,4 +122,8 @@ Move a value by hand:
   curl -X POST localhost:18101/api/tags -d '{"name":"LevelSP","value":42}'
 
   scripts/demo.sh --stop     when you are done
+
+The gateway's trial runs out in two hours and takes WebDev and the historian with it. To keep a demo up,
+make an API key once (Platform -> Security -> API Keys) and run scripts/keep-trial-alive.sh from cron —
+its header has the details. scripts/keep-trial-alive.sh --status needs no key.
 EOF

@@ -13,3 +13,4 @@ node_modules/
 *.pfx
 *.p7b
 sign.props
+.env.trial
