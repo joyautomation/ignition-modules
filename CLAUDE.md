@@ -56,7 +56,10 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
 
 Anything demo-able or surprising that happens here gets a post idea in
 `~/Development/joyautomation/content/ideas.md`, under **"Ignition modules"**, IDs `IM-##` (continue the numbering).
-Do it at the end of a piece of work without being asked. Follow that file's format exactly: `### IM-NN — Title ·
+Do it at the end of a piece of work without being asked. The same goes for anything else content-shaped that
+comes up here (how a shot could be captured, a rig, a series angle): that repo is what it is for, so write it
+there rather than leaving it in a chat reply. Capture tooling and its lessons live in its
+`assets/capture/README.md`; read how an existing rig works (`ls assets/capture`) before proposing a new one. Follow that file's format exactly: `### IM-NN — Title ·
 channels · effort`, a paragraph that leads with the finding, then `*Source: path*`. Read that repo's `README.md`
 and `sourcing.md` first. Rules specific to this project:
 
