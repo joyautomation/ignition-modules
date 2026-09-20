@@ -329,8 +329,10 @@ func TestTheModuleIdentifiesItsVendor(t *testing.T) {
 	if module.VendorContactInfo != "https://joyautomation.com" {
 		t.Errorf("vendorContactInfo = %q", module.VendorContactInfo)
 	}
-	if module.Name != "Mantle for Ignition" {
-		t.Errorf("module name = %q", module.Name)
+	// "Mantle", not "Mantle for Ignition": Inductive's Showcase rules forbid "Ignition" inside a module name,
+	// and this is the field they would see. See ../../docs/releasing.md.
+	if module.Name != "Mantle" {
+		t.Errorf("module name = %q, want Mantle", module.Name)
 	}
 }
 

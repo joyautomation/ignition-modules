@@ -4,12 +4,45 @@ gateway_modules_dir=/usr/local/bin/ignition/user-lib/modules
 gateway_config_dir=/usr/local/bin/ignition/data/config/resources/core
 
 copy_module() {
-    local module="$1" modl
+    local module="$1" modl name
     modl="$(find "$module/build" -maxdepth 1 -name '*.modl' | head -1)"
     [ -n "$modl" ] || { echo "no .modl in $module/build; run ./gradlew build there first" >&2; return 1; }
-    docker compose cp "$modl" "gateway:$gateway_modules_dir/$(basename "$modl")" >/dev/null
-    docker compose exec -T -u root gateway chown ignition:ignition "$gateway_modules_dir/$(basename "$modl")" \
-        2>/dev/null || true
+    name="$(basename "$modl")"
+    docker compose cp "$modl" "gateway:$gateway_modules_dir/$name" >/dev/null
+    docker compose exec -T -u root gateway chown ignition:ignition "$gateway_modules_dir/$name" 2>/dev/null || true
+    repoint_module "$module" "$name"
+}
+
+# The gateway records each module's FILE PATH in data/modules.json, so renaming the .modl (a changed
+# ignitionModule.fileName) leaves it loading the old file for ever while the build cheerfully reports success.
+# Repoint the registry at the new name and drop the stale copy.
+repoint_module() {
+    local module="$1" name="$2" id json
+    id="$(grep -oE 'id\.set\("[^"]+"\)' "$module/build.gradle.kts" | head -1 | sed -E 's/.*"(.*)".*/\1/')"
+    [ -n "$id" ] || return 0
+    json="$(mktemp)"
+    docker compose cp "gateway:/usr/local/bin/ignition/data/modules.json" "$json" >/dev/null 2>&1 || {
+        rm -f "$json"; return 0; }
+    MODULE_ID="$id" MODL_NAME="$name" python3 - "$json" <<'PYEOF' || { rm -f "$json"; return 0; }
+import json, os, sys
+path, mid, name = sys.argv[1], os.environ["MODULE_ID"], os.environ["MODL_NAME"]
+registry = json.load(open(path))
+entry = registry.get(mid)
+want = "/usr/local/bin/ignition/user-lib/modules/" + name
+if not entry or entry.get("filename") == want:
+    sys.exit(1)               # nothing to do
+old = entry["filename"]
+entry["filename"] = want
+json.dump(registry, open(path, "w"), indent=2)
+print("  registry repointed: %s -> %s" % (os.path.basename(old), name))
+open(path + ".stale", "w").write(os.path.basename(old))
+PYEOF
+    docker compose cp "$json" "gateway:/usr/local/bin/ignition/data/modules.json" >/dev/null
+    docker compose exec -T -u root gateway chown ignition:ignition /usr/local/bin/ignition/data/modules.json
+    if [ -f "$json.stale" ]; then
+        docker compose exec -T -u root gateway rm -f "$gateway_modules_dir/$(cat "$json.stale")" 2>/dev/null || true
+    fi
+    rm -f "$json" "$json.stale"
 }
 
 # A first boot on a fresh volume takes ~40 s on a workstation and a few minutes on a two-core CI runner.

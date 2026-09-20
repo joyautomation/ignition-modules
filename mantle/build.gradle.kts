@@ -11,8 +11,10 @@ allprojects {
 }
 
 ignitionModule {
-    fileName.set("Mantle-Ignition")
-    name.set("Mantle for Ignition")
+    // The name is "Mantle", never "Mantle for Ignition": Inductive's Showcase rules forbid "Ignition" inside a
+    // module's name and allow "for Ignition" only as trailing prose. See ../docs/releasing.md.
+    fileName.set("Mantle")
+    name.set("Mantle")
     id.set("com.joyautomation.mantle")
     moduleVersion.set("${project.version}")
     moduleDescription.set(

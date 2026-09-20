@@ -25,6 +25,11 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
   (the `ignitionsdk` group is poms only). System Java is a JRE; `javap` is at
   `~/.gradle/jdks/eclipse_adoptium-11-amd64-linux/jdk-*/bin/javap` and reads the Java 17 classes fine.
   Examples: `github.com/inductiveautomation/ignition-sdk-examples`, branch `ignition-8.3`.
+- **Renaming a module's `.modl` strands the gateway on the old file.** `data/modules.json` records each module's
+  file *path*, so a changed `ignitionModule.fileName` leaves the gateway loading the previous build while the
+  install reports success. `scripts/lib.sh` `repoint_module` fixes the registry and deletes the stale copy.
+- **The module name is `Mantle`, never "Mantle for Ignition".** Inductive's Showcase rules forbid "Ignition"
+  inside a module name and allow "for Ignition" only as trailing prose (`docs/releasing.md`).
 - **8.3 does not scan `user-lib/modules` on every boot.** Modules are registered in `data/modules.json`. A
   third-party `.modl` is only auto-registered on the first boot of a fresh data volume, and only with
   `ACCEPT_MODULE_LICENSES` / `ACCEPT_MODULE_CERTS` set to its id. Hand-editing `modules.json` drops the gateway

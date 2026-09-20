@@ -5,7 +5,7 @@ Modules for Inductive Automation's Ignition (8.3+), built to carry
 
 | | |
 |---|---|
-| [`mantle/`](mantle/README.md) | **Mantle for Ignition.** Sparkplug B host: tags create themselves, are historized by default, and are customized in place. |
+| [`mantle/`](mantle/README.md) | **Mantle.** A Sparkplug B host for Ignition: tags create themselves, are historized by default, and are customized in place. |
 | [`integration/`](integration/README.md) | Integration tests: a real Nautilus edge node against a live gateway. |
 | [`docs/releasing.md`](docs/releasing.md) | Signing, releasing, and getting listed: what is known and what to ask. |
 | [`ideas.md`](ideas.md) | What to build next, and why. |

@@ -1,6 +1,8 @@
-# Mantle for Ignition
+# Mantle
 
-A Sparkplug B host application for Ignition 8.3+. Point it at a broker and:
+A Sparkplug B host application **for Ignition** 8.3+.
+
+Point it at a broker and:
 
 - **Tags create themselves.** Every metric in an NBIRTH or DBIRTH becomes a tag, laid out the way the wire is:
   `[Sparkplug]Group/Node/Metric` and `[Sparkplug]Group/Node/Device/Metric`. A `/` in a metric name is a folder.
