@@ -127,6 +127,9 @@ Both take any authenticated gateway identity — the web UI's own session, or an
 [API token](https://www.docs.inductiveautomation.com/docs/8.3/platform/security/api-keys) for a monitoring
 system (`X-Ignition-API-Token`). Read needs READ, a rebirth needs WRITE, because it is a command to the field.
 
+The module reports itself as **Joy Automation** (`vendorname` in the manifest, which the Gradle plugin has no
+setting for, so `build.gradle.kts` injects it after the plugin writes the file and before it is packed).
+
 ## Build and run
 
 ```sh

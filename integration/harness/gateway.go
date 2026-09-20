@@ -235,6 +235,31 @@ func (g *Gateway) Delete(rel ...string) error {
 	return g.call(map[string]any{"op": "delete", "paths": paths}, &out)
 }
 
+// Module is a module descriptor as the gateway parsed it from module.xml.
+type Module struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Version           string `json:"version"`
+	VendorName        string `json:"vendorName"`
+	VendorContactInfo string `json:"vendorContactInfo"`
+}
+
+// Module returns one loaded module's descriptor by id.
+func (g *Gateway) Module(id string) (Module, error) {
+	var out struct {
+		Modules []Module `json:"modules"`
+	}
+	if err := g.call(map[string]any{"op": "modules"}, &out); err != nil {
+		return Module{}, err
+	}
+	for _, m := range out.Modules {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return Module{}, fmt.Errorf("module %s is not loaded", id)
+}
+
 // NavPage is one page in the gateway's own navigation menu.
 type NavPage struct {
 	Section    string

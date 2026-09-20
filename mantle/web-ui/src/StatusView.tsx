@@ -119,9 +119,17 @@ function NodeTable({ nodes, onRebirth }: { nodes: Node[]; onRebirth: (g: string,
     <table style={styles.table}>
       <thead>
         <tr>
-          {["Edge node", "Metrics", "Last birth", "bdSeq", ""].map((h, i) => (
-            <th key={h} style={{ ...styles.th, textAlign: i === 0 || i === 4 ? "left" : "right" }}>
-              {h}
+          {columns.map((c, i) => (
+            <th
+              key={c.label}
+              title={c.help}
+              style={{
+                ...styles.th,
+                textAlign: i === 0 || i === columns.length - 1 ? "left" : "right",
+                cursor: c.help ? "help" : undefined,
+              }}
+            >
+              {c.label}
             </th>
           ))}
         </tr>
@@ -134,6 +142,22 @@ function NodeTable({ nodes, onRebirth }: { nodes: Node[]; onRebirth: (g: string,
     </table>
   );
 }
+
+// bdSeq is the one column that surprises people: it belongs to the MQTT session, not to the birth, because it
+// is what ties a birth to the death certificate the broker holds for it. Requesting a rebirth deliberately
+// does not change it — Last birth is what moves.
+const columns = [
+  { label: "Edge node", help: "" },
+  { label: "Metrics", help: "How many metrics the node's last birth declared." },
+  { label: "Last birth", help: "When this node last published a birth certificate. A rebirth resets it." },
+  {
+    label: "bdSeq",
+    help:
+      "The node's birth-death sequence number. It identifies the MQTT session, so it changes when the node " +
+      "reconnects — not when you request a rebirth.",
+  },
+  { label: "", help: "" },
+];
 
 function NodeRows({ node, onRebirth }: { node: Node; onRebirth: (g: string, e: string) => void }) {
   return (
@@ -148,7 +172,11 @@ function NodeRows({ node, onRebirth }: { node: Node; onRebirth: (g: string, e: s
         <td style={styles.tdRight}>{since(node.lastBirthMs)}</td>
         <td style={styles.tdRight}>{node.bdSeq < 0 ? "—" : node.bdSeq}</td>
         <td style={styles.td}>
-          <button style={styles.button} onClick={() => onRebirth(node.group, node.edge)}>
+          <button
+            style={styles.button}
+            title="Asks the node to publish its birth certificate again. Last birth updates; bdSeq does not."
+            onClick={() => onRebirth(node.group, node.edge)}
+          >
             Request rebirth
           </button>
         </td>

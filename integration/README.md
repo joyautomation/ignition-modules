@@ -35,7 +35,7 @@ edge-node code, and a stale edge produces failures that are nobody's bug.
   controller or a dead radio link, where nothing closes the socket).
 - **`harness/gateway.go`** and **`gateway-project/integration-api/`**: how tests see Ignition. `integration-api` is an Ignition
   project with one WebDev endpoint over `system.tag.*` (read, write, configure, getConfiguration, browse,
-  queryTagHistory, and the gateway's navigation model). It is deliberately not a side door into the module: tests observe the gateway the way a
+  queryTagHistory, the gateway's navigation model, and its loaded module descriptors). It is deliberately not a side door into the module: tests observe the gateway the way a
   script or the Designer does. **It requires an Administrator login**, so it grants nothing a gateway login
   doesn't, but it has no business on a production gateway.
 
@@ -62,6 +62,7 @@ while you have an edge of your own up.
 | `ATemplateBecomesARealUdtType` | a template definition becomes an Ignition UDT type, its instance a `UdtInstance`, members carry values and history |
 | `AnExistingFolderIsLeftAloneRatherThanConvertedToAUdt` | the upgrade path: a folder from an older build keeps its shape and its values |
 | `TheStatusPageIsRegisteredAndItsRouteIsProtected` | the page is in the gateway's navigation, its bundle is served, and both data routes refuse an anonymous caller |
+| `TheModuleIdentifiesItsVendor` | the gateway parsed the vendor out of module.xml (the build injects it; the Gradle plugin has no setting for it) |
 
 ## What these tests have found
 

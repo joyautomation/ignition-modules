@@ -55,6 +55,29 @@ def doPost(request, session):
 			sections.append({'label': str(section.getLabel()), 'categories': categories})
 		return {'json': {'sections': sections}}
 
+	if op == 'modules':
+		# Module descriptors as the gateway parsed them, so a test can assert what module.xml actually said.
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		out = []
+		for m in IgnitionGateway.get().getModuleManager().getModules():
+			# the manager hands back a wrapper; the descriptor is on it under one of these names
+			info = None
+			for accessor in ('getModuleInfo', 'getInfo', 'getDescriptor'):
+				if hasattr(m, accessor):
+					info = getattr(m, accessor)()
+					break
+			if info is None:
+				return {'json': {'error': 'no descriptor accessor on %s; has: %s'
+					% (type(m).__name__, [a for a in dir(m) if a.startswith('get')][:25])}}
+			out.append({
+				'id': str(info.getId()),
+				'name': str(info.getName()),
+				'version': str(info.getVersion()),
+				'vendorName': str(info.getVendorName()) if info.getVendorName() is not None else None,
+				'vendorContactInfo': str(info.getVendorContactInfo()) if info.getVendorContactInfo() is not None else None,
+			})
+		return {'json': {'modules': out}}
+
 	if op == 'ping':
 		return {'json': {'ok': True, 'time': system.date.now().getTime()}}
 

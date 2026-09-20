@@ -316,6 +316,24 @@ func TestTheStatusPageIsRegisteredAndItsRouteIsProtected(t *testing.T) {
 	}
 }
 
+// What an administrator sees on the module's own page in the gateway. The Gradle plugin has no setting for
+// the vendor, so it is injected into module.xml by the build — which makes it exactly the sort of thing that
+// breaks silently when the build changes.
+func TestTheModuleIdentifiesItsVendor(t *testing.T) {
+	module, err := gw.Module("com.joyautomation.mantle")
+	must(t, err)
+
+	if module.VendorName != "Joy Automation" {
+		t.Errorf("vendorName = %q, want Joy Automation", module.VendorName)
+	}
+	if module.VendorContactInfo != "https://joyautomation.com" {
+		t.Errorf("vendorContactInfo = %q", module.VendorContactInfo)
+	}
+	if module.Name != "Mantle for Ignition" {
+		t.Errorf("module name = %q", module.Name)
+	}
+}
+
 // ── the promise: one set of tags ─────────────────────────────────────────
 
 func TestACustomizedTagSurvivesARebirth(t *testing.T) {
