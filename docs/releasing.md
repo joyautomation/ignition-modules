@@ -293,9 +293,19 @@ on 8.3, so supporting both means separate builds. **reported**
       semver and cannot be. `checkModuleArtifact` fails a build whose version is not `x.3.y`, and the release
       workflow rejects the tag before building.
 - [x] **Sign the module** — **decided 2026-09-21: self-signed** (reasoning above). The machinery is built and
-      verified. **Remaining action, and it is James's rather than mine:** run
-      `scripts/gen-signing-key.sh --secrets`, choose a passphrase, and paste the four values into the repo's
-      Actions secrets. The release workflow refuses to publish unsigned, so this gates the first release.
+      rehearsed end to end. **Remaining action, and it is James's rather than mine, because it involves a
+      passphrase:**
+
+      ```sh
+      scripts/gen-signing-key.sh            # choose a passphrase; writes .signing/mantle.p12 + .p7b
+      scripts/gen-signing-key.sh --upload   # same passphrase; pushes the four secrets with gh
+      ```
+
+      `--upload` checks the passphrase actually opens the keystore before sending anything (a typo here
+      becomes a failed release otherwise), and pipes the files straight into `gh secret set` so the keystore
+      is never printed. `--secrets` prints the values instead, for pasting by hand — which puts a copy of the
+      signing identity in scrollback, so prefer `--upload`. The release workflow refuses to publish unsigned,
+      so this gates the first release.
 - [x] **Re-audit dependency licences** — now automatic. `./gradlew checkDependencyLicenses` (part of `build`,
       so CI runs it on every change) reads each bundled jar's licence, following `<parent>` POMs, fails on the
       GPL family, and also fails if anything ships that `NOTICE` does not name. 25 dependencies, all

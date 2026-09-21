@@ -2,7 +2,8 @@
 # A self-signed code-signing key for the module, and the four repository secrets that let CI use it.
 #
 #   scripts/gen-signing-key.sh                 # ./.signing/mantle.p12 + mantle.p7b
-#   scripts/gen-signing-key.sh --secrets       # ...and print the values for GitHub
+#   scripts/gen-signing-key.sh --upload        # ...and push the four secrets straight to GitHub
+#   scripts/gen-signing-key.sh --secrets       # ...or print them, to paste by hand
 #
 # Self-signed is enough to be listed on the Ignition Module Showcase — a leading open-source Showcase vendor
 # ships exactly that. What a CA certificate buys is a cleaner install prompt on the gateway, nothing else.
@@ -21,9 +22,11 @@ chain="$out/mantle.p7b"
 # because a key quietly lapsed is a bad day.
 days=3650
 
-if [ -f "$keystore" ] && [ "${1:-}" != "--secrets" ]; then
-    echo "$keystore already exists. Delete .signing/ to make a new identity, or pass --secrets to print the"
-    echo "repository secrets for the existing one."
+mode="${1:-}"
+
+if [ -f "$keystore" ] && [ "$mode" != "--secrets" ] && [ "$mode" != "--upload" ]; then
+    echo "$keystore already exists. Delete .signing/ to make a new identity, or pass --upload (or"
+    echo "--secrets) to send the repository secrets for the existing one."
     exit 0
 fi
 
@@ -61,7 +64,37 @@ if [ ! -f "$keystore" ]; then
     echo "  ignition.signing.certPassword=<the passphrase>"
 fi
 
-if [ "${1:-}" = "--secrets" ]; then
+# Uploading beats printing: the keystore is a signing identity, and base64 of it scrolling through a
+# terminal is a copy of that identity in scrollback, in a paste buffer, and possibly in a screen recording.
+# gh reads the files directly and nothing is echoed.
+if [ "$mode" = "--upload" ]; then
+    if [ -z "${SIGNING_PASSWORD:-}" ]; then
+        read -r -s -p "Passphrase for $keystore: " SIGNING_PASSWORD; echo
+    fi
+    # Check it before uploading. A wrong passphrase here becomes a failed release later, which is a much
+    # worse place to discover a typo.
+    if ! keytool -list -keystore "$keystore" -storepass "$SIGNING_PASSWORD" -alias "$alias_name" \
+            >/dev/null 2>&1; then
+        echo "that passphrase does not open $keystore (or alias '$alias_name' is not in it)" >&2
+        exit 1
+    fi
+
+    repo="${SIGNING_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
+    echo "uploading four secrets to $repo..."
+    base64 -w0 "$keystore" | gh secret set MODULE_SIGNING_KEYSTORE_B64 --repo "$repo"
+    base64 -w0 "$chain"    | gh secret set MODULE_SIGNING_CERT_B64     --repo "$repo"
+    printf '%s' "$alias_name"        | gh secret set MODULE_SIGNING_ALIAS         --repo "$repo"
+    printf '%s' "$SIGNING_PASSWORD"  | gh secret set MODULE_SIGNING_KEYSTORE_PASS --repo "$repo"
+
+    echo
+    echo "done. $repo now has:"
+    gh secret list --repo "$repo" | grep MODULE_SIGNING || true
+    echo
+    echo "Cut a release with:  git tag mantle/v1.3.0 && git push origin mantle/v1.3.0"
+    exit 0
+fi
+
+if [ "$mode" = "--secrets" ]; then
     echo
     echo "Repository secrets for .github/workflows/release.yml"
     echo "(Settings → Secrets and variables → Actions → New repository secret):"
