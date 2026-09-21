@@ -66,8 +66,17 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   — the `%s` is filled in with the resource name. It then appears in the resource listing under
   `healthchecks.status.result.{healthy,message}`, which is what the config page reads (`ConnectionHealth`).
   `metrics-healthchecks` comes in transitively, no dependency needed. `HealthCheckRegistry` has `unregister`,
-  not `remove`. There is also `CriticalHealthCheck` (title + resolution text + resolution URL) for the
-  gateway-wide "here's the problem and the page that fixes it" banner — not used yet.
+  not `remove`. **`SharedHealthCheckRegistries.getDefault()` and `GatewayContext.getHealthCheckRegistry()`
+  are the same object** (checked: `sameObject: True`), so one registration serves everything — our checks sit
+  beside `host.disk.fullDisk` and `jvm.threads.deadlock`. A health check that also implements
+  `CriticalHealthCheck` (title, resolution text, resolution URL, action label) is what
+  `OverviewRoutes.getCriticalProblems` reads for the gateway's home-page problem list. `ConnectionHealth`
+  implements it, **but no banner has actually been observed** — `/data/api/v1/overview/banners` shows only
+  the trial banner for a deliberately broken connection, and `/overview/problems` refuses basic auth. Look at
+  it in a browser before claiming it works.
+- **`grep -r` skips binary files; `grep -ra` does not.** Searching extracted `.class` trees for a symbol
+  without `-a` returns a confident, wrong "nothing references this". Always run a control search for a symbol
+  known to be used before trusting a negative.
 - **Wicket is gone in 8.3** — zero classes in `gateway-api-8.3.9.jar`. The 8.1 config-page mechanism does not
   exist, and no amount of searching for it will help.
 - **An extension point's name and description are bundle KEYS, not text.** `AbstractExtensionPoint`'s

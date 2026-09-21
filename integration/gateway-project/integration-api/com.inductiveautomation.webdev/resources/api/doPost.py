@@ -107,6 +107,21 @@ def doPost(request, session):
 			plaintext.close()
 		return {'json': {'secret': system.util.jsonDecode(str(encrypted))}}
 
+	if op == 'healthchecks':
+		# The two registries, side by side. They are not the same object: the resource status delegate (and so
+		# the configuration page's Status column) gathers from SharedHealthCheckRegistries.getDefault(), while
+		# the gateway's overview banner reads IgnitionGateway.getHealthCheckRegistry(). A check has to be in
+		# both to be visible in both, and this is how that gets checked rather than assumed.
+		from com.codahale.metrics.health import SharedHealthCheckRegistries
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		gateway_registry = IgnitionGateway.get().getHealthCheckRegistry()
+		shared = SharedHealthCheckRegistries.getDefault()
+		return {'json': {
+			'shared': sorted([str(n) for n in shared.getNames()]),
+			'gateway': sorted([str(n) for n in gateway_registry.getNames()]) if gateway_registry else None,
+			'sameObject': gateway_registry is shared,
+		}}
+
 	if op == 'connections':
 		# Every Mantle connection with the health check behind the Status column on its configuration page.
 		# Read from the same shared registry the gateway reads, so a test sees exactly what an operator does.
