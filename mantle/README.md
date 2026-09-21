@@ -37,10 +37,20 @@ That was tested against 8.3.9, not assumed: see *What has been verified*.
 
 ## Configuration
 
-Connections are 8.3 config resources of type `com.joyautomation.ignition.mantle/broker-connection`, so they are
-files under `data/config/resources/core/com.joyautomation.ignition.mantle/broker-connection/<name>/`, they are
-git-friendly, and they are reachable through the gateway's config REST API. A change is applied live: the
-connection restarts, the tags stay. Only `brokerUrl` has to be set.
+In the gateway's web UI: **Connections → Sparkplug → Connections**. Add a connection, and every metric that
+arrives on it becomes a tag.
+
+That page is the gateway's own — the same component behind Historians and OPC UA Connections — and the form is
+generated from the settings below, so it stays in step with the module rather than being a second description
+of it. The table's **Status** column is the one to read: it says whether the connection is up, and, if it is,
+where the data is going. A connection that is connected, set to historize, and running on a gateway with no tag
+historian is reported as a **problem**, because it is recording nothing.
+
+Underneath, connections are 8.3 config resources of type `com.joyautomation.mantle/connection`: files under
+`data/config/resources/core/com.joyautomation.mantle/connection/<name>/`, git-friendly, and reachable through
+the gateway's config REST API (`/data/api/v1/resources/list/com.joyautomation.mantle/connection`) for anyone
+who would rather deploy them than click. A change is applied live either way: the connection restarts, the tags
+stay. Only `brokerUrl` has to be set.
 
 | Field | Default | |
 |---|---|---|
@@ -117,7 +127,8 @@ change on write; it changes when the edge reports it. Writes to an offline node 
 
 ## Status
 
-The gateway's web UI gets a **Mantle** page at Diagnostics → Mantle → Sparkplug: every connection, whether it is connected, the
+Beside the Status column on the configuration page, the gateway's web UI gets a **Mantle** page at
+Diagnostics → Mantle → Sparkplug: every connection, whether it is connected, the
 nodes and devices under it with their last birth, and the four numbers worth watching — messages, sequence gaps,
 rebirths requested, and decode failures. Gaps and decode failures both mean data was lost between the edge and
 the gateway, and both should sit at zero on a healthy link. Each node has a **Request rebirth** button. That button is a mutating call, so it carries the gateway's CSRF
@@ -173,11 +184,16 @@ off. (The Nautilus edge sends none of these, so the suite can't cover them yet.)
 **By unit test only** (`HostStateTest` and `StatusRoutesTest`, 25 cases): reordering, duplicate drop, gap expiry, seq wrap at 256, rebirth
 debounce, stale-NDEATH rejection, host-stamped deaths, two-phase births, group filtering, unsigned widening.
 
-**Not yet exercised**: the status page rendering in a browser (its registration, its bundle being served and
-both routes refusing anonymous callers are tested, but nobody has looked at the page itself — that needs a
-logged-in gateway session); TLS, WebSocket and authenticated brokers; devices (DBIRTH/DDEATH) from a real edge; an
-edge with a badly skewed clock; a real Designer session editing a tag (the suite uses `system.tag.configure`, the
-scripted equivalent); Ignition Transmission or tentacle as the edge; load.
+**By looking at it**: the configuration page, against a live gateway — the table, the generated add/edit form
+with its secret-handling password field, and the Status column. The health check behind that column is unit
+tested on all its branches, and was confirmed end to end by stopping the broker (`Not connected to
+tcp://broker:1883 — UnknownHostException`) and starting it again.
+
+**Not yet exercised**: **TLS, WebSocket and authenticated brokers** — `ssl://`, `wss://` and a
+username/password are code paths nothing has ever run, and every broker in a real plant has at least the
+second, so this is the largest gap between this module and a deployable one. Also: devices (DBIRTH/DDEATH) from
+a real edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
+`system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points
 are stored anyway, and it happens with no Sparkplug traffic at all, so it comes from Ignition restoring persisted
