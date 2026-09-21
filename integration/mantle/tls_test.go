@@ -221,3 +221,14 @@ func connackCode(t *testing.T, address string, connect []byte) byte {
 	}
 	return connack[3]
 }
+
+// ── a second broker implementation ───────────────────────────────────────
+
+// "It works against Mosquitto" is a statement about Mosquitto. EMQX is the broker most likely to be found in
+// a plant after it, and it differs in the places Sparkplug leans on hardest: retained messages, will
+// delivery and session takeover. This does not prove Mantle works against every broker — HiveMQ, AWS IoT
+// Core and Azure are all still untested, and the product page says so — but it is the difference between one
+// implementation and two.
+func TestTheEmqxConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, "emqx-broker")
+}

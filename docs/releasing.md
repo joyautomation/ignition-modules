@@ -272,9 +272,13 @@ on 8.3, so supporting both means separate builds. **reported**
       the gateway's `data/certificates/supplemental/` reaches the JVM trust store. Mutual TLS is three
       settings. **Only Mosquitto 2 has been tested**; say so on the product page rather than let a HiveMQ or
       AWS IoT Core user discover it.
-- [ ] **The remaining gaps in `mantle/README.md`**: WebSocket brokers, any broker other than Mosquitto 2,
-      devices from a real edge, a skewed edge clock, load. Mutual TLS is done and covered by CI.
-- [ ] **Sparkplug conformance**: run `sparkplug-tck-go`'s host profile in CI. Eclipse also runs a "Sparkplug
+- [ ] **The remaining gaps in `mantle/README.md`**: WebSocket brokers, HiveMQ / AWS IoT Core / Azure,
+      devices from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance and a second
+      broker implementation (EMQX) are done and covered by CI.
+- [x] **Sparkplug conformance** — done. `scripts/tck-conformance.sh` runs `sparkplug-tck-go`'s
+      host-application profile against a live Mantle in CI: 49 assertions pass, none fail. It grades from the
+      packets on the wire and regenerates its catalogue from the Eclipse spec, so it tracks the
+      specification. **open:** Eclipse also runs a "Sparkplug
       Compatible" programme with a public product list. **open: membership and cost.**
 
 ### One more thing, if Edge matters

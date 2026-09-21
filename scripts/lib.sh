@@ -146,6 +146,49 @@ JSON
     rm -rf "$dir"
 }
 
+# seed_connection <name> <broker-url> <host-id> <tag-provider>: a Mantle connection as a config resource.
+#
+# Files rather than the configuration REST API, because that API accepts only a session or an API token and
+# an API token does not survive a fresh data volume — so CI can never have one. docker cp needs no
+# credentials at all. The cost is that config resources are read at startup, so the caller has to restart
+# the gateway afterwards.
+seed_connection() {
+    local name="$1" url="$2" host_id="$3" provider="$4" dir
+    dir="$(mktemp -d)"
+    cat > "$dir/config.json" <<JSON
+{
+  "profile": { "type": "MQTT" },
+  "settings": {
+    "brokerUrl": "$url",
+    "keepAliveSeconds": 30,
+    "hostId": "$host_id",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "$provider",
+    "historizeByDefault": false
+  }
+}
+JSON
+    cat > "$dir/resource.json" <<JSON
+{
+  "scope": "A",
+  "description": "created by scripts/, removed again by it",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": ["config.json"],
+  "attributes": { "uuid": "$(uuidgen 2>/dev/null || echo "5d1c1f0e-7a54-4a4e-9a57-6b7f5a1d09$RANDOM")", "enabled": true }
+}
+JSON
+    seed_config com.joyautomation.mantle/connection "$name" "$dir"
+    rm -rf "$dir"
+}
+
+# unseed_connection <name>: removes the resource directory again. Also needs a restart to take effect.
+unseed_connection() {
+    docker compose exec -T gateway rm -rf \
+        "$gateway_config_dir/com.joyautomation.mantle/connection/$1" 2>/dev/null || true
+}
+
 # seed_project <name> <source-dir>: an Ignition project, as files
 seed_project() {
     local name="$1" src="$2" dir=/usr/local/bin/ignition/data/projects

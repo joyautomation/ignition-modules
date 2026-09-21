@@ -1,0 +1,14 @@
+{
+  "scope": "A",
+  "description": "EMQX, so the suite is not only ever run against Mosquitto",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "uuid": "5d1c1f0e-7a54-4a4e-9a57-6b7f5a1d0004",
+    "enabled": true
+  }
+}

@@ -41,6 +41,8 @@ seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev
 # Mutual TLS, so CI exercises the certificate path rather than skipping it
 stage_client_certificate
 seed_config com.joyautomation.mantle/connection mtls-broker dev/config/mantle/mtls-broker
+# A second broker implementation. "It works against Mosquitto" is a statement about Mosquitto.
+seed_config com.joyautomation.mantle/connection emqx-broker dev/config/mantle/emqx-broker
 # what the integration tests observe the gateway through; it requires an Administrator login
 seed_project integration-api integration/gateway-project/integration-api
 # Trust the dev CA gateway-wide. This is how a plant trusts its own broker's certificate too: Ignition puts
@@ -60,9 +62,11 @@ wait_for_gateway
 cat <<'EOF'
 
 gateway   http://localhost:8088   (admin / password)
-broker    tcp://localhost:1883    anonymous
+broker    tcp://localhost:1883    anonymous (mosquitto)
           tcp://localhost:1884    mantle / mantle-dev-password
           ssl://localhost:8883    mantle / mantle-dev-password, CA at dev/certs/ca.crt
+          ssl://localhost:8884    mutual TLS, client cert at dev/certs/client.crt
+emqx      tcp://localhost:1886    anonymous (EMQX, the second broker implementation)
 
 Run the integration tests (a real Nautilus edge node against this gateway):
   (cd integration && go test ./...)

@@ -74,6 +74,14 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   constructor takes `nameKey`/`descriptionKey`; an unresolved one renders as `¿Mantle.Connection.MQTT.name?`
   on the page. Register the bundle in `setup()` — `BundleUtil.get().addBundle("Mantle", Hook.class, "Mantle")`
   — and put the strings in `Mantle.properties` beside the hook class.
+- **`user-lib/modules` is NOT in the `gateway-data` volume.** Any `docker compose up -d gateway` that
+  recreates the container (an edited `docker-compose.yml` will) deletes every installed third-party module
+  while `data/modules.json` — which *is* in the volume — still points at it, and the gateway logs
+  *"The file for module 'com.joyautomation.mantle' is missing and will not be loaded"*. Re-run
+  `scripts/install-module.sh mantle`. Symptom: every module route 404s.
+- **A fresh data volume invalidates the API token in `.env.trial`.** `dev-up.sh --fresh` therefore breaks the
+  trial-reset cron until a new token is made by hand. Anything scripted should go through the integration-api
+  WebDev endpoint (basic auth) or `docker cp`, never an API token — CI can never have one.
 - **Renaming a module's `.modl` strands the gateway on the old file.** `data/modules.json` records each module's
   file *path*, so a changed `ignitionModule.fileName` leaves the gateway loading the previous build while the
   install reports success. `scripts/lib.sh` `repoint_module` fixes the registry and deletes the stale copy.

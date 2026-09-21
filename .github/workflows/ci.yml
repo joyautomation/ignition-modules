@@ -103,6 +103,10 @@ jobs:
           repository: joyautomation/nautilus
           ref: ${{ env.NAUTILUS_REF }}
           path: nautilus
+      - uses: actions/checkout@v7
+        with:
+          repository: joyautomation/sparkplug-tck-go
+          path: sparkplug-tck-go
       - uses: actions/setup-java@v6
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v6
@@ -142,6 +146,22 @@ jobs:
           echo "no setup-related skips"
         working-directory: ignition/integration
 
+      # Sparkplug conformance. sparkplug-tck-go runs an in-process broker, Mantle connects to it as a host
+      # application, and every normative assertion in the host-application profile is graded from the packets
+      # that crossed the wire. It regenerates its assertion catalogue from the Eclipse spec, so this keeps up
+      # with the specification rather than with a hand-written list.
+      - name: Sparkplug TCK — host application profile
+        run: scripts/tck-conformance.sh
+        working-directory: ignition
+        env:
+          TCK_SRC: ${{ github.workspace }}/sparkplug-tck-go
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sparkplug-tck-results
+          path: ignition/build/tck/*.json
+          if-no-files-found: ignore
+
       - name: Collect logs
         if: failure()
         run: |
@@ -149,6 +169,7 @@ jobs:
           docker compose logs --no-color gateway > logs/gateway.log 2>&1 || true
           docker compose logs --no-color broker > logs/broker.log 2>&1 || true
           grep -E 'Mantle|M\.Host|M\.Tags|M\.C\.' logs/gateway.log > logs/mantle.log || true
+          cp -r build/tck logs/tck 2>/dev/null || true
         working-directory: ignition
       - uses: actions/upload-artifact@v7
         if: failure()

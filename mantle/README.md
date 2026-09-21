@@ -244,10 +244,19 @@ failures. Each claim has its negative: before the CA was trusted the connection 
 `certificate_required`. `scripts/dev-up.sh` sets all of it up, so CI runs it rather than skipping it — and
 CI fails if any of these tests skips for want of setup.
 
-**Not yet exercised**: WebSocket brokers (`ws://`, `wss://`); any broker other than Mosquitto 2 (HiveMQ,
-EMQX, AWS IoT Core and Azure differ on ALPN, retained-message and will semantics); devices (DBIRTH/DDEATH)
-from a real edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
-`system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
+**Sparkplug conformance.** `scripts/tck-conformance.sh` runs
+[sparkplug-tck-go](https://github.com/joyautomation/sparkplug-tck-go)'s host-application profile: an
+in-process broker, Mantle connected to it as a host, and every normative assertion graded from the packets
+that crossed the wire. **49 assertions pass, none fail.** It runs in CI, and because that TCK regenerates its
+catalogue from the Eclipse specification it keeps up with the spec rather than with a hand-written list.
+
+**Two broker implementations.** Mosquitto 2 and EMQX 5, both in the dev stack, both connected on every CI
+run.
+
+**Not yet exercised**: WebSocket brokers (`ws://`, `wss://`); HiveMQ, AWS IoT Core and Azure, which differ on
+ALPN, retained-message and will semantics; devices (DBIRTH/DDEATH) from a real edge; an edge with a badly
+skewed clock; a real Designer session editing a tag (the suite uses `system.tag.configure`, the scripted
+equivalent); Ignition Transmission or tentacle as the edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points
 are stored anyway, and it happens with no Sparkplug traffic at all, so it comes from Ignition restoring persisted

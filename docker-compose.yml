@@ -27,6 +27,10 @@ services:
       -Dignition.allowunsignedmodules=true
     volumes:
       - gateway-data:/usr/local/bin/ignition/data
+    # So a Sparkplug TCK harness running on the host is reachable as a broker from inside the container.
+    # scripts/tck-conformance.sh uses this; nothing else does.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - broker
 
@@ -42,6 +46,22 @@ services:
     volumes:
       - ./dev/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./dev/certs:/mosquitto/certs:ro
+
+  # A second broker implementation, because "it works against Mosquitto" is a statement about Mosquitto.
+  # EMQX is the one most likely to be found in a plant after Mosquitto, and it differs in the places
+  # Sparkplug leans on hardest: retained messages, will delivery and session takeover.
+  #
+  # Anonymous on 1883 to keep the comparison to one variable — the broker.
+  emqx:
+    image: emqx/emqx:5.10.5
+    ports:
+      - "1886:1883"
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"
+      EMQX_NODE__COOKIE: mantle-dev
+      # EMQX defaults to refusing anonymous connections in 5.x; both of these are needed.
+      EMQX_AUTHENTICATION: "[]"
+      EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN: "false"
 
 volumes:
   gateway-data:
