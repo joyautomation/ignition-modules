@@ -238,12 +238,14 @@ on 8.3, so supporting both means separate builds. **reported**
 
 ## Before a first public release
 
-- [ ] **Decide the product name** (see above). Conservative: `Mantle`, with "for Ignition" as prose only.
-- [ ] **A licence for the repo and the module.** No `LICENSE` yet. The module should carry a `license.html`; the
-      gateway shows it at install, and `ACCEPT_MODULE_LICENSES` exists because modules are expected to have one.
-- [ ] **Third-party notices.** The `.modl` bundles Eclipse Tahu (**EPL-2.0**), the HiveMQ MQTT client, Netty,
-      Jackson and protobuf (Apache-2.0 / BSD). EPL-2.0 is weak copyleft: shipping Tahu unmodified is fine, but its
-      licence and a notice of where to get the source have to travel with the module. Generate a `NOTICE` at build.
+- [x] **Decide the product name.** `Mantle`, with "for Ignition" as trailing prose only. `checkModuleArtifact`
+      fails a build whose `<name>` contains "Ignition", so the Showcase rule is enforced rather than remembered.
+- [x] **A licence for the repo and the module.** Apache-2.0 in `LICENSE`; the module carries
+      `mantle/license.html`, which the gateway shows at install. `checkModuleArtifact` fails if it is missing.
+- [x] **Third-party notices.** `NOTICE` names every bundled library, and Tahu's EPL-2.0 obligation (licence
+      plus a pointer to the source) travels with it. Not generated, but *enforced*:
+      `checkDependencyLicenses` fails if anything ships that `NOTICE` does not name, which is the property
+      that actually matters — a generated file nobody reads can be silently wrong.
 - [x] **A real version.** `1.3.0`. The middle digit must match the platform's minor version — Inductive's own
       modules confirm the shape (Historian 1.3.9, OPC-UA 10.3.9, Perspective 3.3.9, all on 8.3.9). It is not
       semver and cannot be. `checkModuleArtifact` fails a build whose version is not `x.3.y`, and the release
@@ -257,7 +259,11 @@ on 8.3, so supporting both means separate builds. **reported**
       so CI runs it on every change) reads each bundled jar's licence, following `<parent>` POMs, fails on the
       GPL family, and also fails if anything ships that `NOTICE` does not name. 25 dependencies, all
       permissive except Tahu's EPL-2.0. Proven to bite by adding MySQL's GPL connector.
-- [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of approval.
+- [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of
+      approval. **Copy is drafted in `docs/product-page.md`**, including the two things a reviewer has
+      rejected applications over: the price stated upfront (Free) and a direct download link with no email
+      gate. It needs porting into the SvelteKit site (suggest `/software/mantle`, beside `/software/tentacle`)
+      and the claims are yours to approve before it goes public.
 - [x] **User documentation in the module.** `mantle/doc/index.html`, shipped through `documentationFiles`, so
       it matches the build that is installed. `checkModuleArtifact` fails if it is missing.
 - [x] **TLS, authenticated brokers and mutual TLS.** Done 2026-09-20/21, and covered by CI rather than by
@@ -266,8 +272,8 @@ on 8.3, so supporting both means separate builds. **reported**
       the gateway's `data/certificates/supplemental/` reaches the JVM trust store. Mutual TLS is three
       settings. **Only Mosquitto 2 has been tested**; say so on the product page rather than let a HiveMQ or
       AWS IoT Core user discover it.
-- [ ] **The remaining gaps in `mantle/README.md`**: mutual TLS, WebSocket brokers, devices from a real edge,
-      a skewed edge clock, load.
+- [ ] **The remaining gaps in `mantle/README.md`**: WebSocket brokers, any broker other than Mosquitto 2,
+      devices from a real edge, a skewed edge clock, load. Mutual TLS is done and covered by CI.
 - [ ] **Sparkplug conformance**: run `sparkplug-tck-go`'s host profile in CI. Eclipse also runs a "Sparkplug
       Compatible" programme with a public product list. **open: membership and cost.**
 
