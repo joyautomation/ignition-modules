@@ -1,13 +1,32 @@
 package com.joyautomation.ignition.mantle.mqtt;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import javax.crypto.Cipher;
+import javax.crypto.EncryptedPrivateKeyInfo;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.net.ssl.KeyManagerFactory;
 
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
@@ -36,7 +55,16 @@ public class BrokerConnection implements HostState.Outbound {
     /** What a connection needs to know; kept free of gateway types so it can run in a plain JVM. */
     public record Settings(String name, String brokerUrl, String username, Supplier<byte[]> password,
                            String clientId, int keepAliveSeconds, String hostId, Set<String> groups,
-                           long reorderTimeoutMs) {
+                           long reorderTimeoutMs, ClientCertificate clientCertificate) {
+    }
+
+    /**
+     * A certificate and key identifying this gateway to a broker that demands one — mutual TLS. Null when the
+     * broker does not ask, which is the common case. The broker's own certificate is a separate matter and
+     * needs nothing here: it is verified against the JVM trust store, which Ignition fills from
+     * data/certificates/supplemental.
+     */
+    public record ClientCertificate(String certificateFile, String privateKeyFile, Supplier<byte[]> password) {
     }
 
     private final Logger logger;
@@ -132,13 +160,80 @@ public class BrokerConnection implements HostState.Outbound {
             .addConnectedListener(context -> inbound.execute(this::sessionEstablished))
             .addDisconnectedListener(this::sessionLost);
         if (tls) {
-            builder = builder.sslWithDefaultConfig();
+            // Either way the broker's own certificate is checked against the JVM trust store, which Ignition
+            // fills from data/certificates/supplemental. The key manager only adds our side of a mutual
+            // handshake.
+            KeyManagerFactory keys = clientCertificate().orElse(null);
+            builder = keys == null
+                ? builder.sslWithDefaultConfig()
+                : builder.sslConfig().keyManagerFactory(keys).applySslConfig();
         }
         if (webSocket) {
             String path = uri.getPath() == null || uri.getPath().isEmpty() ? "mqtt" : uri.getPath().substring(1);
             builder = builder.webSocketConfig().serverPath(path).applyWebSocketConfig();
         }
         return builder.buildAsync();
+    }
+
+    /**
+     * The key material for mutual TLS, read from the PEM files named in the connection's settings, or empty
+     * when this connection has none. Read at connect time rather than at configuration time so that a
+     * renewed certificate is picked up by a reconnect instead of needing the connection edited.
+     *
+     * <p>A broker that asks for a certificate we cannot supply fails the handshake with something obscure, so
+     * an unreadable file is logged for what it is and the connection goes on to fail honestly.
+     */
+    private Optional<KeyManagerFactory> clientCertificate() {
+        ClientCertificate keys = settings.clientCertificate();
+        if (keys == null) {
+            return Optional.empty();
+        }
+        char[] password = passwordChars(keys);
+        try (InputStream certificates = Files.newInputStream(Path.of(keys.certificateFile()));
+             InputStream key = Files.newInputStream(Path.of(keys.privateKeyFile()))) {
+            KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
+            store.load(null, null);
+            Collection<? extends Certificate> chain =
+                CertificateFactory.getInstance("X.509").generateCertificates(certificates);
+            store.setKeyEntry("client", privateKey(key.readAllBytes(), password), password,
+                chain.toArray(new Certificate[0]));
+            KeyManagerFactory factory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            factory.init(store, password);
+            return Optional.of(factory);
+        } catch (Exception e) {
+            logger.error("Could not read the client certificate for '{}' ({} / {}); the broker will refuse "
+                + "this connection if it requires one", settings.name(), keys.certificateFile(),
+                keys.privateKeyFile(), e);
+            return Optional.empty();
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+    }
+
+    /** PKCS#8 PEM, encrypted or not. PKCS#1 ("BEGIN RSA PRIVATE KEY") is not supported; openssl converts it. */
+    private static PrivateKey privateKey(byte[] pem, char[] password) throws Exception {
+        String text = new String(pem, StandardCharsets.UTF_8);
+        String base64 = text.replaceAll("-----(BEGIN|END)[^-]*-----", "").replaceAll("\\s", "");
+        byte[] der = Base64.getDecoder().decode(base64);
+        if (text.contains("ENCRYPTED PRIVATE KEY")) {
+            EncryptedPrivateKeyInfo encrypted = new EncryptedPrivateKeyInfo(der);
+            SecretKey secret = SecretKeyFactory.getInstance(encrypted.getAlgName())
+                .generateSecret(new PBEKeySpec(password));
+            Cipher cipher = Cipher.getInstance(encrypted.getAlgName());
+            cipher.init(Cipher.DECRYPT_MODE, secret, encrypted.getAlgParameters());
+            return KeyFactory.getInstance("RSA")
+                .generatePrivate(encrypted.getKeySpec(cipher));
+        }
+        return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(der));
+    }
+
+    /** An empty array rather than null: KeyStore.setKeyEntry and KeyManagerFactory.init both require one. */
+    private static char[] passwordChars(ClientCertificate keys) {
+        byte[] bytes = keys.password() == null ? null : keys.password().get();
+        if (bytes == null || bytes.length == 0) {
+            return new char[0];
+        }
+        return new String(bytes, StandardCharsets.UTF_8).toCharArray();
     }
 
     /**

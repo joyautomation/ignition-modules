@@ -38,6 +38,9 @@ wait_for_gateway
 
 seed_config com.inductiveautomation.historian/historian-provider Core dev/config/core-historian
 seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker
+# Mutual TLS, so CI exercises the certificate path rather than skipping it
+stage_client_certificate
+seed_config com.joyautomation.mantle/connection mtls-broker dev/config/mantle/mtls-broker
 # what the integration tests observe the gateway through; it requires an Administrator login
 seed_project integration-api integration/gateway-project/integration-api
 # Trust the dev CA gateway-wide. This is how a plant trusts its own broker's certificate too: Ignition puts
@@ -45,6 +48,12 @@ seed_project integration-api integration/gateway-project/integration-api
 # ssl:// connections use — so there is nothing to configure in Mantle itself. Verified 2026-09-20.
 trust_dev_ca
 # config resources are read at startup
+docker compose restart gateway
+wait_for_gateway
+
+# Needs the gateway up with the integration-api project loaded, so it happens after that restart and costs
+# one more. Without it the TLS tests skip, and a skipped test covers nothing.
+seed_tls_connection
 docker compose restart gateway
 wait_for_gateway
 

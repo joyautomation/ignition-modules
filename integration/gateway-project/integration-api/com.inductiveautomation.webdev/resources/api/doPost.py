@@ -93,6 +93,20 @@ def doPost(request, session):
 			out.append(str(meta.getResourceType()))
 		return {'json': {'types': sorted(out)}}
 
+	if op == 'encrypt':
+		# An embedded secret is a JWE encrypted with this gateway's own key, so one cannot be committed to the
+		# repo — which is why the dev stack's TLS connection has to be built on the machine it runs on. The
+		# gateway's own /data/api/v1/encryption/encrypt needs a session or an API token; this endpoint already
+		# has an Administrator login, so scripts/lib.sh comes through here instead.
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		from com.inductiveautomation.ignition.gateway.secrets import Plaintext
+		plaintext = Plaintext.fromString(body['plaintext'])
+		try:
+			encrypted = IgnitionGateway.get().getSystemEncryptionService().encryptToJson(plaintext)
+		finally:
+			plaintext.close()
+		return {'json': {'secret': system.util.jsonDecode(str(encrypted))}}
+
 	if op == 'connections':
 		# Every Mantle connection with the health check behind the Status column on its configuration page.
 		# Read from the same shared registry the gateway reads, so a test sees exactly what an operator does.

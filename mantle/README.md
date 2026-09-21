@@ -63,6 +63,9 @@ stay. Only `brokerUrl` has to be set.
 | `reorderTimeoutMs` | `5000` | how long a missing sequence number is waited for before a rebirth is requested |
 | `tagProvider` | `Sparkplug` | created if missing; several connections may share one |
 | `historizeByDefault` | `true` | |
+| `clientCertificateFile` | none | Mutual TLS only: PEM certificate or chain identifying this gateway |
+| `clientPrivateKeyFile` | none | Its **PKCS#8** private key. Both are paths; both are read at connect time |
+| `clientPrivateKeyPassword` | none | Only if the key is encrypted; stored as an Ignition secret |
 | `historyProvider` | first available | |
 
 `dev/config/mantle/dev-broker/` in the repo root is a working example.
@@ -80,12 +83,19 @@ every module on the gateway and there is no per-connection truststore to get wro
 is not silent: the connection's Status reads
 `Not connected to ssl://… — SunCertPathBuilderException: unable to find valid certification path`.
 
-Mutual TLS (the broker demanding a client certificate) is **not supported yet**.
+Mutual TLS (the broker demanding a client certificate) **is** supported: give the connection a client certificate and its PKCS#8 private key, both as
+paths. They are read at connect time, so a renewed certificate is picked up by a reconnect rather than
+needing the connection edited. A certificate without its key (or the reverse) is refused by the form rather
+than failing later as a handshake error.
 
-The dev stack has all of this: `scripts/gen-dev-certs.sh` makes a private CA and a broker certificate,
-`dev/mosquitto.conf` serves three listeners — 1883 anonymous, 1884 username/password, 8883 TLS and
-username/password — and `scripts/dev-up.sh` puts the CA in the gateway's supplemental store for you. To add
-the TLS connection the integration tests look for, encrypt the password and create the resource:
+The dev stack has all of this, and `scripts/dev-up.sh` sets the whole thing up: a private CA, four broker
+listeners (1883 anonymous, 1884 username/password, 8883 TLS + username/password, 8884 mutual TLS), the CA in
+the gateway's supplemental store, and both TLS connections created. The integration tests then cover it
+rather than skipping.
+
+The `tls-broker` connection cannot be a committed file, because its embedded secret is encrypted with the
+gateway's own key — `seed_tls_connection` in `scripts/lib.sh` builds it on the machine it runs on. To make
+one by hand, encrypt the password and create the resource:
 
 ```sh
 . ./.env.trial     # an API token; a gateway session works too
@@ -100,9 +110,8 @@ curl -s -X POST -H "X-Ignition-API-Token: $IGNITION_API_TOKEN" -H 'Content-Type:
   http://localhost:8088/data/api/v1/resources/com.joyautomation.mantle/connection
 ```
 
-It is two commands rather than a seeded file because an embedded secret is encrypted with the gateway's own
-key, so a committed one would not decrypt on anybody else's gateway. Adding it through the configuration page
-is the same thing with a password box.
+Adding it through the configuration page is the same thing with a password box. `dev/config/mantle/mtls-broker/`
+*is* a committed file, because mutual TLS needs no secret at all — the certificate is the identity.
 
 ## Behaviour
 
@@ -226,17 +235,18 @@ with its secret-handling password field, and the Status column. The health check
 tested on all its branches, and was confirmed end to end by stopping the broker (`Not connected to
 tcp://broker:1883 — UnknownHostException`) and starting it again.
 
-**TLS and authentication, end to end**: a broker whose certificate is signed by a CA nothing on the machine
-trusts, on a listener that refuses anonymous clients. The CA goes in the gateway's supplemental store, an
-edge publishes over `ssl://` with a username and password, and its tags appear under their own provider —
-4,615 messages, no sequence gaps, no decode failures. Four tests hold it (`integration/mantle/tls_test.go`):
-the broker's chain, the listener refusing an anonymous CONNECT, and the module's own health for every
-connection. Before the CA was trusted the same connection reported
-`SunCertPathBuilderException`, so the test is checking something real.
+**TLS, authentication and mutual TLS, end to end** (`integration/mantle/tls_test.go`, seven tests): a broker
+whose certificate is signed by a CA nothing on the machine trusts, a listener that refuses anonymous
+clients, and a listener that demands a client certificate. An edge publishes over `ssl://` with a username
+and password and its tags appear under their own provider — 4,615 messages, no sequence gaps, no decode
+failures. Each claim has its negative: before the CA was trusted the connection reported
+`SunCertPathBuilderException`; without a client certificate the mutual-TLS listener answers
+`certificate_required`. `scripts/dev-up.sh` sets all of it up, so CI runs it rather than skipping it — and
+CI fails if any of these tests skips for want of setup.
 
-**Not yet exercised**: **mutual TLS** (a broker that demands a client certificate) — unsupported, and the
-next thing to add if a plant asks; WebSocket brokers (`ws://`, `wss://`); devices (DBIRTH/DDEATH) from a real
-edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
+**Not yet exercised**: WebSocket brokers (`ws://`, `wss://`); any broker other than Mosquitto 2 (HiveMQ,
+EMQX, AWS IoT Core and Azure differ on ALPN, retained-message and will semantics); devices (DBIRTH/DDEATH)
+from a real edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
 `system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points

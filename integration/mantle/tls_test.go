@@ -25,7 +25,25 @@ import (
 // The connection scripts/dev-up.sh does NOT create, because an embedded secret is encrypted with the
 // gateway's own key and so cannot be committed to the repo. Create it by hand (mantle/README.md says how)
 // and these tests start asserting on it.
-const tlsConnection = "tls-broker"
+const (
+	tlsConnection  = "tls-broker"
+	mtlsConnection = "mtls-broker"
+)
+
+// Marker for a skip that means the *environment* was not set up, as opposed to a deliberate skip for a known
+// bug. CI fails on this one, because a TLS test that quietly stops running is how TLS coverage rots.
+const setupMissing = "SETUP-MISSING:"
+
+// A CONNECT packet for MQTT 3.1.1 with client id "probe" and no credentials — the smallest thing a broker
+// must answer, and so the smallest thing that proves it refused to.
+var mqttConnect = []byte{
+	0x10, 17, // CONNECT, remaining length
+	0x00, 0x04, 'M', 'Q', 'T', 'T', // protocol name
+	0x04,       // level 4 (3.1.1)
+	0x02,       // flags: clean session, no username/password
+	0x00, 0x3c, // keepalive 60
+	0x00, 0x05, 'p', 'r', 'o', 'b', 'e', // client id
+}
 
 // The broker's certificate is signed by a CA generated for this repo, which nothing on the machine trusts.
 // That is the point: it is the same situation as a plant's own CA, and a public certificate would prove
@@ -33,7 +51,7 @@ const tlsConnection = "tls-broker"
 func TestTheBrokersTlsListenerIsSignedByTheDevCa(t *testing.T) {
 	pem, err := os.ReadFile(filepath.Join("..", "..", "dev", "certs", "ca.crt"))
 	if err != nil {
-		t.Skipf("no dev CA yet — run scripts/gen-dev-certs.sh (%v)", err)
+		t.Skipf("%s no dev CA — run scripts/gen-dev-certs.sh (%v)", setupMissing, err)
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(pem) {
@@ -62,16 +80,7 @@ func TestTheBrokersTlsListenerIsSignedByTheDevCa(t *testing.T) {
 // is proving nothing.
 func TestTheAuthenticatedListenerRefusesAnonymousClients(t *testing.T) {
 	// A bare TCP connect always succeeds; MQTT rejects at CONNECT, so send one and read the CONNACK.
-	// CONNECT for MQTT 3.1.1 with client id "probe" and no credentials.
-	connect := []byte{
-		0x10, 17, // CONNECT, remaining length
-		0x00, 0x04, 'M', 'Q', 'T', 'T', // protocol name
-		0x04,       // level 4 (3.1.1)
-		0x02,       // flags: clean session, no username/password
-		0x00, 0x3c, // keepalive 60
-		0x00, 0x05, 'p', 'r', 'o', 'b', 'e', // client id
-	}
-	code := connackCode(t, "localhost:1884", connect)
+	code := connackCode(t, "localhost:1884", mqttConnect)
 	// 0 is "accepted", 4 is "bad user name or password", 5 is "not authorized"
 	if code == 0 {
 		t.Error("the authenticated listener accepted an anonymous client — check per_listener_settings in dev/mosquitto.conf")
@@ -81,26 +90,99 @@ func TestTheAuthenticatedListenerRefusesAnonymousClients(t *testing.T) {
 // The module's own view of a TLS connection: connected, and recording. This is the end of the chain the
 // supplemental CA makes possible.
 func TestATlsConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, tlsConnection)
+}
+
+// Asserts one named connection is connected, and skips when this gateway has not been given it — the TLS
+// connections cannot be seeded from a file, because an embedded secret is encrypted with the gateway's own
+// key. mantle/README.md has the commands.
+func requireHealthyConnection(t *testing.T, name string) {
+	t.Helper()
 	connections, err := gw.Connections()
 	must(t, err)
 
 	for _, c := range connections {
-		if c.Name != tlsConnection {
+		if c.Name != name {
 			continue
-		}
-		if !c.Healthy {
-			t.Fatalf("%s is unhealthy: %s", c.Name, c.Message)
 		}
 		// An untrusted CA fails here and nowhere else, so name it: this is the assertion that proves the
 		// gateway's supplemental trust store reaches Mantle's MQTT client.
 		if strings.Contains(c.Message, "certification path") {
 			t.Fatalf("%s cannot verify the broker's certificate — is the dev CA in the gateway's "+
-				"data/certificates/supplemental? (%s)", c.Name, c.Message)
+				"data/certificates/supplemental? (%s)", name, c.Message)
+		}
+		if strings.Contains(c.Message, "certificate_required") {
+			t.Fatalf("%s did not present a client certificate the broker would accept: %s", name, c.Message)
+		}
+		if !c.Healthy {
+			t.Fatalf("%s is unhealthy: %s", name, c.Message)
 		}
 		return
 	}
-	t.Skipf("no %q connection on this gateway; mantle/README.md has the two commands that create one",
-		tlsConnection)
+	t.Skipf("%s no %q connection on this gateway — scripts/dev-up.sh creates it", setupMissing, name)
+}
+
+// The mutual-TLS listener must refuse a client that brings no certificate. Without this, a "connected"
+// mtls-broker would prove nothing at all — the listener could simply not be asking.
+func TestTheMutualTlsListenerDemandsAClientCertificate(t *testing.T) {
+	// Under TLS 1.3 the client's certificate is sent *after* the handshake looks complete, so tls.Dial
+	// returns a usable-looking connection and the rejection only arrives when the connection is actually
+	// used. Asserting on Dial alone passes for the wrong reason — which is exactly what this test did first
+	// time round. So send a real MQTT CONNECT and insist it goes nowhere.
+	conn, err := tls.Dial("tcp", "localhost:8884", &tls.Config{RootCAs: devCA(t), ServerName: "localhost"})
+	if err != nil {
+		if !strings.Contains(err.Error(), "certificate") {
+			t.Errorf("handshake failed, but not over a certificate: %v", err)
+		}
+		return // rejected at handshake time (TLS 1.2), which is also correct
+	}
+	defer conn.Close()
+	must(t, conn.SetDeadline(time.Now().Add(10*time.Second)))
+
+	if _, err := conn.Write(mqttConnect); err != nil {
+		return // refused on write: correct
+	}
+	if _, err := io.ReadFull(conn, make([]byte, 4)); err == nil {
+		t.Error("the mutual-TLS listener answered an MQTT CONNECT from a client with no certificate")
+	}
+}
+
+// And with a certificate it must succeed — otherwise the test above is passing for the wrong reason.
+func TestTheMutualTlsListenerAcceptsTheDevClientCertificate(t *testing.T) {
+	certificate, err := tls.LoadX509KeyPair(
+		filepath.Join("..", "..", "dev", "certs", "client.crt"),
+		filepath.Join("..", "..", "dev", "certs", "client.key"))
+	if err != nil {
+		t.Skipf("%s no dev client certificate — run scripts/gen-dev-certs.sh (%v)", setupMissing, err)
+	}
+
+	conn, err := tls.Dial("tcp", "localhost:8884", &tls.Config{
+		RootCAs:      devCA(t),
+		ServerName:   "localhost",
+		Certificates: []tls.Certificate{certificate},
+	})
+	if err != nil {
+		t.Fatalf("the dev client certificate was refused: %v", err)
+	}
+	conn.Close()
+}
+
+// The module's own end of it: Mantle reading a PEM certificate and key off disk and presenting them.
+func TestAMutualTlsConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, mtlsConnection)
+}
+
+func devCA(t *testing.T) *x509.CertPool {
+	t.Helper()
+	pem, err := os.ReadFile(filepath.Join("..", "..", "dev", "certs", "ca.crt"))
+	if err != nil {
+		t.Skipf("%s no dev CA — run scripts/gen-dev-certs.sh (%v)", setupMissing, err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		t.Fatal("dev/certs/ca.crt is not a PEM certificate")
+	}
+	return roots
 }
 
 // Whatever else is configured, nothing should be quietly broken.

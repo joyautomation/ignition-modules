@@ -11,6 +11,7 @@ import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.F
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.FormField;
 import com.inductiveautomation.ignition.gateway.web.nav.FormFieldType;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.Label;
+import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.NonSecret;
 import com.inductiveautomation.ignition.gateway.dataroutes.openapi.annotations.Required;
 import com.inductiveautomation.ignition.gateway.secrets.SecretConfig;
 
@@ -52,6 +53,34 @@ public record BrokerConnectionConfig(
     @FormField(FormFieldType.NUMBER)
     @DefaultValue("30")
     Integer keepAliveSeconds,
+
+    // There is deliberately no truststore setting. The gateway already has one: certificates in
+    // data/certificates/supplemental are loaded into the JVM's default trust store, which is what an ssl://
+    // connection here uses. One CA for every module, in the place an Ignition administrator already knows.
+    // These three are only for the other direction — proving who *we* are to a broker that asks.
+    @FormCategory("TLS")
+    @Label("Client Certificate")
+    @FormField(FormFieldType.TEXT)
+    @Description("Path to a PEM certificate (or chain) to identify this gateway to the broker. Only needed if "
+        + "the broker requires a client certificate. Leave blank otherwise; the broker's own certificate is "
+        + "verified against the gateway's trust store either way.")
+    String clientCertificateFile,
+
+    @FormCategory("TLS")
+    @Label("Client Private Key")
+    @FormField(FormFieldType.TEXT)
+    // A path, not the key itself. Without this the gateway warns at startup that a field whose name contains
+    // "Key" is not a SecretConfig — a good check, and worth answering explicitly rather than silencing.
+    @NonSecret
+    @Description("Path to the PEM private key for the client certificate, in PKCS#8 format. The key stays on "
+        + "disk and is read at connect time; only its password, if it has one, is stored as a secret.")
+    String clientPrivateKeyFile,
+
+    @FormCategory("TLS")
+    @Label("Client Private Key Password")
+    @FormField(FormFieldType.SECRET)
+    @Description("Only if the private key is encrypted.")
+    SecretConfig clientPrivateKeyPassword,
 
     @FormCategory("SPARKPLUG")
     @Label("Host ID")
@@ -98,7 +127,14 @@ public record BrokerConnectionConfig(
     String historyProvider
 ) {
     public static final BrokerConnectionConfig DEFAULT = new BrokerConnectionConfig(
-        "tcp://localhost:1883", null, null, null, 30, null, null, 5000, "Sparkplug", true, null);
+        "tcp://localhost:1883", null, null, null, 30, null, null, null, null, null, 5000, "Sparkplug",
+        true, null);
+
+    /** Whether this connection should present a client certificate — mutual TLS. */
+    public boolean hasClientCertificate() {
+        return clientCertificateFile != null && !clientCertificateFile.isBlank()
+            && clientPrivateKeyFile != null && !clientPrivateKeyFile.isBlank();
+    }
 
     /** Called by the extension point when the gateway validates an edit. */
     public static void validate(BrokerConnectionConfig config, ValidationErrors.Builder validator) {
@@ -107,6 +143,12 @@ public record BrokerConnectionConfig(
             "brokerUrl", "must look like tcp://host:1883, ssl://host:8883, ws://host/path or wss://host/path");
         validator.checkField(config.tagProvider() != null && !config.tagProvider().isBlank(),
             "tagProvider", "is required");
+        // Half a client certificate is never what anyone meant, and the failure it causes otherwise is a TLS
+        // handshake error at connect time rather than a message next to the field that is wrong.
+        boolean certificate = config.clientCertificateFile() != null && !config.clientCertificateFile().isBlank();
+        boolean key = config.clientPrivateKeyFile() != null && !config.clientPrivateKeyFile().isBlank();
+        validator.checkField(certificate == key, "clientPrivateKeyFile",
+            "a client certificate and its private key have to be given together");
     }
 
     public Set<String> groupIdSet() {

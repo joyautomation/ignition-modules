@@ -61,8 +61,18 @@ jobs:
       - uses: actions/setup-java@v6
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v6
+      # `build` runs the distribution checks too: no copyleft dependency, every bundled library named in
+      # NOTICE, and a .modl that carries its manifest fields, licence and documentation. A release should
+      # never be the first time those are looked at.
       - run: ./gradlew build
         working-directory: mantle
+      - name: Dependency licences
+        if: always()
+        run: |
+          if [ -f mantle/build/reports/dependency-licenses.txt ]; then
+            { echo '### Bundled dependency licences'; echo '```';
+              cat mantle/build/reports/dependency-licenses.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Test report
         if: always()
         uses: actions/upload-artifact@v7
@@ -113,10 +123,24 @@ jobs:
       - run: go vet ./...
         working-directory: ignition/integration
       - name: Integration tests
-        run: go test -count=1 -v -timeout 20m ./mantle/...
+        run: |
+          set -o pipefail
+          go test -count=1 -v -timeout 20m ./mantle/... 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
         working-directory: ignition/integration
         env:
           NAUTILUS_SRC: ${{ github.workspace }}/nautilus
+
+      # A test that skips because its fixture is missing covers nothing, and is how the TLS tests would
+      # quietly stop running. Deliberate skips (a known Nautilus bug) are fine and are not marked.
+      - name: No test skipped for want of setup
+        if: always()
+        run: |
+          if grep -rn 'SETUP-MISSING:' "$RUNNER_TEMP/test-output.txt" 2>/dev/null; then
+            echo "::error::A test skipped because the dev stack was not fully set up — see above."
+            exit 1
+          fi
+          echo "no setup-related skips"
+        working-directory: ignition/integration
 
       - name: Collect logs
         if: failure()

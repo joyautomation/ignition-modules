@@ -34,10 +34,22 @@ openssl req -newkey rsa:2048 -nodes -keyout broker.key -out broker.csr \
 
 openssl x509 -req -in broker.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out broker.crt \
     -days "$DAYS" -extfile <(printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\n' "$SAN") 2>/dev/null
-rm -f broker.csr ca.srl
+
+# A client certificate for the mutual-TLS listener, signed by the same CA. PKCS#8, because that is what
+# Mantle reads — openssl's default for -newkey since 3.0, but asked for explicitly so this does not quietly
+# change under us.
+echo "generating a client certificate..."
+openssl req -newkey rsa:2048 -nodes -keyout client.key -out client.csr \
+    -subj "/O=Joy Automation/CN=mantle-client" 2>/dev/null
+openssl pkcs8 -topk8 -nocrypt -in client.key -out client.pk8.key 2>/dev/null
+mv client.pk8.key client.key
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt \
+    -days "$DAYS" -extfile <(printf 'extendedKeyUsage=clientAuth\n') 2>/dev/null
+
+rm -f broker.csr client.csr ca.srl
 
 # Mosquitto runs as uid 1883 in the official image and refuses a key it cannot read.
-chmod 644 broker.key ca.key
+chmod 644 broker.key ca.key client.key
 
 # The password file for the authenticated listeners. mosquitto_passwd lives in the broker image, so use it
 # from there rather than depending on it being installed here.

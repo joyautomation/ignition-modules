@@ -1,0 +1,15 @@
+{
+  "profile": {
+    "type": "MQTT"
+  },
+  "settings": {
+    "brokerUrl": "ssl://broker:8884",
+    "clientCertificateFile": "/usr/local/bin/ignition/data/mantle-certs/client.crt",
+    "clientPrivateKeyFile": "/usr/local/bin/ignition/data/mantle-certs/client.key",
+    "keepAliveSeconds": 30,
+    "hostId": "joy-dev-mtls",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "SparkplugMtls",
+    "historizeByDefault": true
+  }
+}

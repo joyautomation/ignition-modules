@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mantle</title>
+<style>
+  :root { --fg: #1c1e21; --muted: #5c6470; --line: #e3e6ea; --accent: #2b6cb0; --bg: #fff; --code-bg: #f6f7f9; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #e6e8eb; --muted: #a0a8b4; --line: #333941; --accent: #7bb3e8; --bg: #16181c; --code-bg: #22262c; }
+  }
+  body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         color: var(--fg); background: var(--bg); margin: 0 auto; max-width: 46rem; padding: 2rem 1rem 5rem; }
+  h1 { font-size: 1.9rem; margin-bottom: .2rem; }
+  h2 { font-size: 1.25rem; margin-top: 2.4rem; padding-bottom: .3rem; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 1rem; margin-top: 1.6rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin-top: 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875em; }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 3px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  a { color: var(--accent); }
+  .note { border-left: 3px solid var(--accent); padding: .6rem 1rem; margin: 1.2rem 0; background: var(--code-bg);
+          border-radius: 0 4px 4px 0; }
+  footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted);
+           font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<h1>Mantle</h1>
+<p class="lede">A Sparkplug B host application for Ignition. Tags are created as they are born, historized by
+default, and customized in place — there is no second set of tags to maintain.</p>
+
+<h2>What it does</h2>
+<p>Point Mantle at an MQTT broker. Every Sparkplug edge node publishing to that broker appears as a folder of
+tags, with the right data types, engineering units, and documentation carried across from the edge. Nothing has
+to be declared in advance, and nothing has to be re-declared when the edge changes.</p>
+<p>Writes go back the other way: writing to a tag sends an NCMD or DCMD to the edge node that owns it.</p>
+
+<h3>Customization is safe</h3>
+<p>A managed tag provider keeps two layers. What Mantle sets is stored under <code>prg</code>; what you set in
+the Designer sits beside it and wins. So an edge node rebirth refreshes data types, units and the history
+default without touching an alarm you added, a scale factor you set, or a tag you switched history off on.</p>
+
+<h2>Adding a connection</h2>
+<p><strong>Connections → Sparkplug → Connections → Create Connection.</strong> Only the broker URL has to be
+filled in.</p>
+
+<table>
+  <tr><th>Setting</th><th>Default</th><th></th></tr>
+  <tr><td><code>Broker URL</code></td><td><code>tcp://localhost:1883</code></td>
+      <td><code>tcp://</code>, <code>ssl://</code>, <code>ws://</code> or <code>wss://</code></td></tr>
+  <tr><td><code>Username</code>, <code>Password</code></td><td>none</td>
+      <td>The password is stored as an Ignition secret, never as plaintext</td></tr>
+  <tr><td><code>Client ID</code></td><td>derived from the host ID</td><td></td></tr>
+  <tr><td><code>Keep Alive</code></td><td>30 s</td><td></td></tr>
+  <tr><td><code>Host ID</code></td><td>the connection's name</td>
+      <td>Published on <code>spBv1.0/STATE/&lt;id&gt;</code>. Edge nodes naming this as their primary host
+          hold data in store-and-forward while the gateway is offline.</td></tr>
+  <tr><td><code>Group IDs</code></td><td>every group</td><td>Comma-separated, to consume only some</td></tr>
+  <tr><td><code>Reorder Timeout</code></td><td>5000 ms</td>
+      <td>How long a missing sequence number is waited for before a rebirth is requested</td></tr>
+  <tr><td><code>Tag Provider</code></td><td><code>Sparkplug</code></td>
+      <td>Created if it does not exist. Several connections may share one.</td></tr>
+  <tr><td><code>Historize By Default</code></td><td>on</td>
+      <td>Metrics the edge marks <code>is_transient</code> always start with history off</td></tr>
+  <tr><td><code>History Provider</code></td><td>first available</td><td></td></tr>
+</table>
+
+<div class="note">
+<strong>A gateway with no tag historian records nothing.</strong> Mantle will say so — the connection's
+<em>Status</em> reads <em>"Connected, but nothing is being recorded"</em> — but it cannot invent a historian.
+Configure one under <strong>Services → Historians</strong>, and history switches itself on as each node
+births again. No tag needs touching.
+</div>
+
+<h2>TLS</h2>
+<p>Use an <code>ssl://</code> URL and TLS is on. There is deliberately <strong>no truststore setting</strong>:
+the broker's certificate is verified against the gateway's own trust store.</p>
+
+<h3>A broker with a certificate from your own CA</h3>
+<p>Put the CA certificate in the gateway's <code>data/certificates/supplemental/</code> directory and restart
+the gateway. Ignition loads everything there into the trust store that Mantle uses, so one CA serves every
+module on the gateway.</p>
+<p>If the certificate is not trusted, the connection says so rather than failing quietly:</p>
+<pre><code>Not connected to ssl://broker:8883 — SunCertPathBuilderException:
+unable to find valid certification path to requested target</code></pre>
+
+<h3>A broker that requires a client certificate</h3>
+<p>Mutual TLS. Fill in the <strong>TLS</strong> section of the connection:</p>
+<table>
+  <tr><th>Setting</th><th></th></tr>
+  <tr><td><code>Client Certificate</code></td><td>Path to a PEM certificate, or a chain</td></tr>
+  <tr><td><code>Client Private Key</code></td><td>Path to the PEM private key, in <strong>PKCS#8</strong> format</td></tr>
+  <tr><td><code>Client Private Key Password</code></td><td>Only if the key is encrypted</td></tr>
+</table>
+<p>Both files are read at connect time, so a renewed certificate is picked up by a reconnect rather than
+needing the connection edited. If your key is in PKCS#1 form (it begins
+<code>-----BEGIN RSA PRIVATE KEY-----</code>), convert it:</p>
+<pre><code>openssl pkcs8 -topk8 -nocrypt -in client.key -out client.pk8.key</code></pre>
+
+<h2>Checking that it is working</h2>
+<p><strong>Diagnostics → Mantle → Sparkplug</strong> shows every connection, the edge nodes and devices under
+it, and four numbers worth watching:</p>
+<table>
+  <tr><th>Counter</th><th></th></tr>
+  <tr><td>Messages</td><td>Everything received. Should climb.</td></tr>
+  <tr><td>Sequence gaps</td><td><strong>Should be zero.</strong> A gap means a message was lost between the
+      edge and the gateway.</td></tr>
+  <tr><td>Rebirths requested</td><td>Mantle asking a node to re-announce itself, usually after a gap.</td></tr>
+  <tr><td>Decode failures</td><td><strong>Should be zero.</strong> A payload that could not be read.</td></tr>
+</table>
+<p>Each node has a <strong>Request rebirth</strong> button, which asks that node to publish its birth
+certificate again — the way to recover a node whose tags look stale or incomplete.</p>
+
+<h3>From a script or a monitoring system</h3>
+<p>The same data is JSON at <code>GET /data/mantle/status</code>, and a rebirth is
+<code>POST /data/mantle/rebirth/&lt;group&gt;/&lt;edge&gt;</code>. Both accept any authenticated gateway
+identity, including an API token. Reading needs <code>READ</code>; a rebirth needs <code>WRITE</code>, because
+it is a command to the field.</p>
+
+<h2>Common problems</h2>
+
+<h3>Tags are not appearing</h3>
+<p>Check the connection's Status on the configuration page first — a connection that is not connected says why.
+If it is connected, the edge node may be publishing to a group ID the connection is filtering out, or may not
+have published a birth certificate yet. Press <strong>Request rebirth</strong>.</p>
+
+<h3>Values are there but history is empty</h3>
+<p>Either the gateway has no historian (the Status column says so), or Ignition's own sample-rate deadband is
+discarding them. Ignition stores at most one sample per second by default; a faster process needs
+<code>HistoryTimeDeadband</code> lowered on the tag or the provider.</p>
+
+<h3>A node shows online after it has actually gone</h3>
+<p>Sparkplug reports a death through the broker's last-will mechanism, which only fires when the broker
+notices the connection has dropped — up to one keep-alive interval later. A node killed without a clean
+disconnect takes that long to be marked offline.</p>
+
+<h2>Licence and source</h2>
+<p>Mantle is free and open source under the Apache License 2.0. The source, the issue tracker and the
+integration test suite are at <a href="https://github.com/joyautomation/ignition-modules">github.com/joyautomation/ignition-modules</a>.</p>
+<p>Commercial support is available from Joy Automation — the software is free; hire us if you want someone on
+the end of a phone.</p>
+
+<footer>
+Mantle — <a href="https://joyautomation.com">Joy Automation</a>.
+Bundles Eclipse Tahu (EPL-2.0) and the HiveMQ MQTT Client (Apache-2.0); see the module's licence page for the
+full third-party notices.
+</footer>
+
+</body>
+</html>

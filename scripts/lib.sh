@@ -79,6 +79,73 @@ trust_dev_ca() {
     docker compose exec -T -u root gateway chown -R ignition:ignition "$dir"
 }
 
+# stage_client_certificate: the PEM pair the mtls-broker connection points at, inside the gateway.
+#
+# This is the one dev connection that can be seeded from a committed file, because mutual TLS needs no
+# secret — the certificate is the identity. The password-carrying ones cannot: an embedded secret is
+# encrypted with the gateway's own key, so a committed one would not decrypt anywhere else.
+stage_client_certificate() {
+    local dir=/usr/local/bin/ignition/data/mantle-certs
+    docker compose exec -T gateway mkdir -p "$dir"
+    docker compose cp dev/certs/client.crt "gateway:$dir/client.crt" >/dev/null
+    docker compose cp dev/certs/client.key "gateway:$dir/client.key" >/dev/null
+    docker compose exec -T -u root gateway chown -R ignition:ignition "$dir"
+}
+
+# seed_tls_connection: the TLS + username/password connection, built here rather than committed.
+#
+# An embedded secret is a JWE encrypted with the gateway's own key, so a committed config.json would not
+# decrypt on anybody else's gateway. The integration-api project (already seeded, and the only thing here
+# that accepts a plain gateway login) encrypts it, and the result is written as an ordinary config resource.
+#
+# Requires the gateway to be up with that project loaded, so call it after the first restart.
+seed_tls_connection() {
+    local name=tls-broker dir
+    dir="$(mktemp -d)"
+    local secret
+    secret=$(curl -sf -m 30 -u admin:password -H 'Content-Type: application/json' \
+        -d '{"op":"encrypt","plaintext":"mantle-dev-password"}' \
+        http://localhost:8088/system/webdev/integration-api/api \
+        | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["secret"]))')
+    if [ -z "$secret" ]; then
+        echo "could not encrypt the broker password; is the integration-api project loaded?" >&2
+        rm -rf "$dir"
+        return 1
+    fi
+
+    cat > "$dir/config.json" <<JSON
+{
+  "profile": { "type": "MQTT" },
+  "settings": {
+    "brokerUrl": "ssl://broker:8883",
+    "username": "mantle",
+    "password": { "type": "Embedded", "data": $secret },
+    "keepAliveSeconds": 30,
+    "hostId": "joy-dev-tls",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "SparkplugTls",
+    "historizeByDefault": true
+  }
+}
+JSON
+    cat > "$dir/resource.json" <<'JSON'
+{
+  "scope": "A",
+  "description": "TLS and a username/password against the dev broker's 8883 listener",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": ["config.json"],
+  "attributes": {
+    "uuid": "5d1c1f0e-7a54-4a4e-9a57-6b7f5a1d0003",
+    "enabled": true
+  }
+}
+JSON
+    seed_config com.joyautomation.mantle/connection "$name" "$dir"
+    rm -rf "$dir"
+}
+
 # seed_project <name> <source-dir>: an Ignition project, as files
 seed_project() {
     local name="$1" src="$2" dir=/usr/local/bin/ignition/data/projects

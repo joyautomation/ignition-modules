@@ -2,7 +2,10 @@
 
 Ignition 8.3+ modules in one repo (`joyautomation/ignition-modules`): one Gradle build per module directory
 (`mantle/`), sharing the dev stack, `scripts/`, and the integration harness. Each module versions and releases on
-its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README.md`, `mantle/README.md`,
+its own (tags like `mantle/v1.3.0` — **the middle digit must match the platform's minor**, so 8.3 means x.3.y;
+Inductive's own modules do the same, e.g. Historian 1.3.9 on 8.3.9). Pushing that tag runs
+`.github/workflows/release.yml`, which builds, runs both suites, signs from repository secrets and drafts a
+GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.md`,
 `ideas.md`.
 
 ## Commands
@@ -52,6 +55,11 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
 - **`allow_anonymous` and `password_file` are GLOBAL in mosquitto 2** — without `per_listener_settings true`
   the last one written wins and silently turns an anonymous listener into an authenticated one. That is what
   broke port 1883 for the demo and the whole suite the first time `dev/mosquitto.conf` was written.
+- **An embedded secret is a JWE encrypted with the gateway's own key**, so a config resource carrying one
+  cannot be committed — it will not decrypt anywhere else. Encrypt through `/data/api/v1/encryption/encrypt`
+  (session or API token only; **basic auth is refused**) or, from a script, through the integration-api
+  WebDev endpoint's `encrypt` op, which does accept a gateway login. `scripts/lib.sh seed_tls_connection` is
+  the working example. Deleting a resource needs its `signature` as well as its name.
 - **A resource's Status column comes from a Dropwizard health check, not from your own API.** Register the
   check in `SharedHealthCheckRegistries.getDefault()` under a name containing the resource's name, and point
   the resource type at it with `.buildStatusDelegate(s -> s.instanceHealthCheck("status", "mantle.%s.status"))`

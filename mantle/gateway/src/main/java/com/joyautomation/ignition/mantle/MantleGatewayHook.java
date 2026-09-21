@@ -21,6 +21,7 @@ import com.inductiveautomation.ignition.gateway.model.AbstractGatewayModuleHook;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 import com.inductiveautomation.ignition.gateway.secrets.Plaintext;
 import com.inductiveautomation.ignition.gateway.secrets.Secret;
+import com.inductiveautomation.ignition.gateway.secrets.SecretConfig;
 import com.inductiveautomation.ignition.gateway.web.nav.NavigationModel;
 import com.inductiveautomation.ignition.gateway.web.systemjs.SystemJsModule;
 import com.joyautomation.ignition.mantle.config.BrokerConnectionConfig;
@@ -119,7 +120,8 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
                 String hostId = config.hostId() == null || config.hostId().isBlank() ? name : config.hostId().trim();
                 BrokerConnection connection = new BrokerConnection(new BrokerConnection.Settings(name,
                     config.brokerUrl(), config.username(), () -> password(config), config.clientId(),
-                    config.keepAliveOrDefault(), hostId, config.groupIdSet(), config.reorderTimeoutOrDefault()), sink);
+                    config.keepAliveOrDefault(), hostId, config.groupIdSet(), config.reorderTimeoutOrDefault(),
+                    clientCertificate(config)), sink);
 
                 BiPredicate<String, Object> writer = connection.host()::write;
                 sink.addWriter(writer);
@@ -175,14 +177,31 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         }
     }
 
-    private byte[] password(BrokerConnectionConfig config) {
-        if (config.password() == null) {
+    /** Mutual TLS, or null when this connection does not present a certificate — which is the common case. */
+    private BrokerConnection.ClientCertificate clientCertificate(BrokerConnectionConfig config) {
+        if (!config.hasClientCertificate()) {
             return null;
         }
-        try (Plaintext plaintext = Secret.create(context, config.password()).getPlaintext()) {
+        return new BrokerConnection.ClientCertificate(config.clientCertificateFile(),
+            config.clientPrivateKeyFile(), () -> secret(config.clientPrivateKeyPassword(), "client key"));
+    }
+
+    private byte[] password(BrokerConnectionConfig config) {
+        return secret(config.password(), "broker password");
+    }
+
+    /**
+     * Reads one secret. Resolved at the moment it is needed rather than held, so a rotated secret is picked up
+     * by a reconnect, and so a plaintext password is never a field on a long-lived object.
+     */
+    private byte[] secret(SecretConfig config, String what) {
+        if (config == null) {
+            return null;
+        }
+        try (Plaintext plaintext = Secret.create(context, config).getPlaintext()) {
             return plaintext.getBytes().clone();
         } catch (Exception e) {
-            logger.warn("Could not read the broker password secret", e);
+            logger.warn("Could not read the {} secret", what, e);
             return null;
         }
     }
