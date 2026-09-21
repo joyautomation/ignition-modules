@@ -1,12 +1,21 @@
 package com.joyautomation.ignition.mantle.sim;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import javax.net.ssl.TrustManagerFactory;
 
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt3.Mqtt3BlockingClient;
+import com.hivemq.client.mqtt.mqtt3.Mqtt3ClientBuilder;
 import com.hivemq.client.mqtt.mqtt3.message.publish.Mqtt3Publish;
 import org.eclipse.tahu.message.SparkplugBPayloadDecoder;
 import org.eclipse.tahu.message.SparkplugBPayloadEncoder;
@@ -51,14 +60,58 @@ public class EdgeSimulator {
 
     EdgeSimulator(String broker, String group, String node) {
         java.net.URI uri = java.net.URI.create(broker);
+        String scheme = uri.getScheme() == null ? "tcp" : uri.getScheme().toLowerCase();
+        boolean tls = Set.of("ssl", "tls", "mqtts").contains(scheme);
         this.group = group;
         this.node = node;
-        this.client = MqttClient.builder().useMqttVersion3().identifier("sim-" + group + "-" + node)
-            .serverHost(uri.getHost()).serverPort(uri.getPort() > 0 ? uri.getPort() : 1883).buildBlocking();
+
+        Mqtt3ClientBuilder builder = MqttClient.builder().useMqttVersion3()
+            .identifier("sim-" + group + "-" + node)
+            .serverHost(uri.getHost())
+            .serverPort(uri.getPort() > 0 ? uri.getPort() : tls ? 8883 : 1883);
+        if (tls) {
+            // MQTT_CA_FILE trusts one PEM and nothing else. The dev broker's CA is private, so the JVM's own
+            // trust store cannot help — and pointing at the file is what a test wants anyway, since trusting
+            // the machine's whole trust store would hide a certificate that should have been rejected.
+            builder = builder.sslConfig().trustManagerFactory(trustManager(System.getenv("MQTT_CA_FILE")))
+                .applySslConfig();
+        }
+        this.client = builder.buildBlocking();
+    }
+
+    /**
+     * A trust manager that trusts exactly the CA in the given PEM file, or the JVM default when no file is
+     * named.
+     */
+    private static TrustManagerFactory trustManager(String caFile) {
+        if (caFile == null || caFile.isBlank()) {
+            return null; // HiveMQ falls back to the platform default
+        }
+        try (InputStream pem = Files.newInputStream(Path.of(caFile))) {
+            KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
+            store.load(null, null);
+            int i = 0;
+            for (Certificate certificate : CertificateFactory.getInstance("X.509").generateCertificates(pem)) {
+                store.setCertificateEntry("ca-" + i++, certificate);
+            }
+            TrustManagerFactory factory =
+                TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            factory.init(store);
+            return factory;
+        } catch (Exception e) {
+            throw new IllegalStateException("could not read the CA file " + caFile, e);
+        }
     }
 
     void run(long seconds) throws Exception {
-        client.connectWith().cleanSession(true).keepAlive(30)
+        var connect = client.connectWith().cleanSession(true).keepAlive(30);
+        String username = System.getenv("MQTT_USERNAME");
+        if (username != null && !username.isBlank()) {
+            connect = connect.simpleAuth().username(username)
+                .password(System.getenv("MQTT_PASSWORD").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .applySimpleAuth();
+        }
+        connect
             .willPublish().topic(topic("NDEATH", false)).qos(MqttQos.AT_LEAST_ONCE)
             .payload(encode(payload(null, bdSeqMetric()))).applyWillPublish().send();
         client.toAsync().subscribeWith().topicFilter("spBv1.0/" + group + "/NCMD/" + node)

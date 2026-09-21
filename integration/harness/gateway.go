@@ -260,6 +260,25 @@ func (g *Gateway) Module(id string) (Module, error) {
 	return Module{}, fmt.Errorf("module %s is not loaded", id)
 }
 
+// Connection is one Mantle broker connection and the health the gateway reports for it — the same result
+// behind the Status column on the module's configuration page.
+type Connection struct {
+	Name    string `json:"name"`
+	Healthy bool   `json:"healthy"`
+	Message string `json:"message"`
+}
+
+// Connections lists every Mantle connection the gateway knows about, with its health.
+func (g *Gateway) Connections() ([]Connection, error) {
+	var out struct {
+		Connections []Connection `json:"connections"`
+	}
+	if err := g.call(map[string]any{"op": "connections"}, &out); err != nil {
+		return nil, err
+	}
+	return out.Connections, nil
+}
+
 // NavPage is one page in the gateway's own navigation menu.
 type NavPage struct {
 	Section    string

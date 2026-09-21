@@ -43,6 +43,15 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
   to `EMPTY`) and `.buildRouteDelegate(routes -> routes.profileSchema(...))`. The extension-point builder has
   `profileSchema`, not `configSchema`. Symptom: `/data/api/v1/resources/list/<module>/<type>` 404s while an IA
   module's own type 200s.
+- **TLS needs no module configuration: `data/certificates/supplemental/` reaches the JVM default trust
+  store.** Drop a PEM there, restart, and HiveMQ's `sslWithDefaultConfig()` trusts it — so a plant's private
+  CA is a gateway-level act an Ignition administrator already knows, and Mantle needs no truststore field.
+  Verified 2026-09-20 against a private CA (`SunCertPathBuilderException` before, connected after);
+  `scripts/lib.sh trust_dev_ca` is the dev stack doing it. There is no `SslManager` in the SDK, only
+  `gateway.ssl.SslManagerChangeEvent`, so this is the whole story. Mutual TLS is a separate question.
+- **`allow_anonymous` and `password_file` are GLOBAL in mosquitto 2** — without `per_listener_settings true`
+  the last one written wins and silently turns an anonymous listener into an authenticated one. That is what
+  broke port 1883 for the demo and the whole suite the first time `dev/mosquitto.conf` was written.
 - **A resource's Status column comes from a Dropwizard health check, not from your own API.** Register the
   check in `SharedHealthCheckRegistries.getDefault()` under a name containing the resource's name, and point
   the resource type at it with `.buildStatusDelegate(s -> s.instanceHealthCheck("status", "mantle.%s.status"))`

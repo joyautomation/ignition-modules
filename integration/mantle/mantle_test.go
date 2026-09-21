@@ -285,23 +285,14 @@ func TestTheStatusPageIsRegisteredAndItsRouteIsProtected(t *testing.T) {
 	pages, err := gw.Nav()
 	must(t, err)
 
-	var page, connections *harness.NavPage
+	var page *harness.NavPage
 	for i := range pages {
-		switch {
-		case pages[i].Category == "Mantle":
+		if pages[i].Category == "Mantle" {
 			page = &pages[i]
-		case pages[i].URL == "/connections/sparkplug":
-			connections = &pages[i]
 		}
 	}
 	if page == nil {
 		t.Fatalf("no Mantle page in the gateway's navigation; have %v", pages)
-	}
-	// There is deliberately no connections page yet: Ignition gives a module the add/edit form for an
-	// extension point but not the page that lists them, and mounting the form on its own renders
-	// "Web UI Component type not found". Asserted so a half-finished page cannot reappear unnoticed.
-	if connections != nil {
-		t.Errorf("a /connections/sparkplug page is mounted again — check it actually renders before keeping it")
 	}
 	if page.Section != "Diagnostics" {
 		t.Errorf("Mantle page is under %q, want Diagnostics", page.Section)

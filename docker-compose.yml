@@ -30,11 +30,17 @@ services:
     depends_on:
       - broker
 
+  # Three listeners: 1883 anonymous, 1884 username/password, 8883 TLS + username/password. See
+  # dev/mosquitto.conf. Run scripts/gen-dev-certs.sh first — dev-up.sh does.
   broker:
     image: eclipse-mosquitto:2
     ports:
       - "1883:1883"
-    command: mosquitto -c /mosquitto-no-auth.conf
+      - "1884:1884"
+      - "8883:8883"
+    volumes:
+      - ./dev/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./dev/certs:/mosquitto/certs:ro
 
 volumes:
   gateway-data:

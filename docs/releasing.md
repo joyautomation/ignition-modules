@@ -238,8 +238,12 @@ on 8.3, so supporting both means separate builds. **reported**
 - [ ] **Re-audit dependency licences** for anything GPL/LGPL/AGPL before each release. Clean today.
 - [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of approval.
 - [ ] **User documentation in the module** (`documentationFiles` puts it on the gateway's module page).
-- [ ] **The status page looked at by a person**, and the gaps in `mantle/README.md` (TLS, authenticated brokers,
-      devices from a real edge, a skewed edge clock, load).
+- [x] **TLS and authenticated brokers.** Done 2026-09-20: a private CA, a listener that refuses anonymous
+      clients, and an edge publishing over `ssl://` with a username and password. No Mantle setting was
+      needed — the gateway's `data/certificates/supplemental/` reaches the JVM trust store. **Mutual TLS is
+      still unsupported**, which is worth saying on the product page rather than leaving to be discovered.
+- [ ] **The remaining gaps in `mantle/README.md`**: mutual TLS, WebSocket brokers, devices from a real edge,
+      a skewed edge clock, load.
 - [ ] **Sparkplug conformance**: run `sparkplug-tck-go`'s host profile in CI. Eclipse also runs a "Sparkplug
       Compatible" programme with a public product list. **open: membership and cost.**
 

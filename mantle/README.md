@@ -67,6 +67,43 @@ stay. Only `brokerUrl` has to be set.
 
 `dev/config/mantle/dev-broker/` in the repo root is a working example.
 
+### TLS and authenticated brokers
+
+A username and password are two fields, and the password is an Ignition secret — encrypted on disk, or a
+reference into a secret provider. Neither is ever written in plaintext.
+
+**TLS needs nothing from Mantle at all.** Use an `ssl://` URL and it is on. If the broker's certificate comes
+from a public CA it verifies immediately; if it comes from the plant's own CA — which is the usual case —
+put that CA's certificate in the gateway's `data/certificates/supplemental/` and restart. Ignition loads
+everything there into the JVM's default trust store, which is the trust store Mantle uses, so one CA serves
+every module on the gateway and there is no per-connection truststore to get wrong. An untrusted certificate
+is not silent: the connection's Status reads
+`Not connected to ssl://… — SunCertPathBuilderException: unable to find valid certification path`.
+
+Mutual TLS (the broker demanding a client certificate) is **not supported yet**.
+
+The dev stack has all of this: `scripts/gen-dev-certs.sh` makes a private CA and a broker certificate,
+`dev/mosquitto.conf` serves three listeners — 1883 anonymous, 1884 username/password, 8883 TLS and
+username/password — and `scripts/dev-up.sh` puts the CA in the gateway's supplemental store for you. To add
+the TLS connection the integration tests look for, encrypt the password and create the resource:
+
+```sh
+. ./.env.trial     # an API token; a gateway session works too
+JWE=$(curl -s -X POST -H "X-Ignition-API-Token: $IGNITION_API_TOKEN" -H 'Content-Type: text/plain' \
+  --data-binary 'mantle-dev-password' http://localhost:8088/data/api/v1/encryption/encrypt)
+curl -s -X POST -H "X-Ignition-API-Token: $IGNITION_API_TOKEN" -H 'Content-Type: application/json' -d "[{
+  \"name\": \"tls-broker\", \"enabled\": true,
+  \"config\": {\"profile\": {\"type\": \"MQTT\"}, \"settings\": {
+    \"brokerUrl\": \"ssl://broker:8883\", \"username\": \"mantle\",
+    \"password\": {\"type\": \"Embedded\", \"data\": $JWE},
+    \"hostId\": \"joy-dev-tls\", \"tagProvider\": \"SparkplugTls\"}}}]" \
+  http://localhost:8088/data/api/v1/resources/com.joyautomation.mantle/connection
+```
+
+It is two commands rather than a seeded file because an embedded secret is encrypted with the gateway's own
+key, so a committed one would not decrypt on anybody else's gateway. Adding it through the configuration page
+is the same thing with a password box.
+
 ## Behaviour
 
 **Host application.** Connects with a clean session and a retained will of
@@ -189,10 +226,17 @@ with its secret-handling password field, and the Status column. The health check
 tested on all its branches, and was confirmed end to end by stopping the broker (`Not connected to
 tcp://broker:1883 — UnknownHostException`) and starting it again.
 
-**Not yet exercised**: **TLS, WebSocket and authenticated brokers** — `ssl://`, `wss://` and a
-username/password are code paths nothing has ever run, and every broker in a real plant has at least the
-second, so this is the largest gap between this module and a deployable one. Also: devices (DBIRTH/DDEATH) from
-a real edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
+**TLS and authentication, end to end**: a broker whose certificate is signed by a CA nothing on the machine
+trusts, on a listener that refuses anonymous clients. The CA goes in the gateway's supplemental store, an
+edge publishes over `ssl://` with a username and password, and its tags appear under their own provider —
+4,615 messages, no sequence gaps, no decode failures. Four tests hold it (`integration/mantle/tls_test.go`):
+the broker's chain, the listener refusing an anonymous CONNECT, and the module's own health for every
+connection. Before the CA was trusted the same connection reported
+`SunCertPathBuilderException`, so the test is checking something real.
+
+**Not yet exercised**: **mutual TLS** (a broker that demands a client certificate) — unsupported, and the
+next thing to add if a plant asks; WebSocket brokers (`ws://`, `wss://`); devices (DBIRTH/DDEATH) from a real
+edge; an edge with a badly skewed clock; a real Designer session editing a tag (the suite uses
 `system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points

@@ -93,6 +93,23 @@ def doPost(request, session):
 			out.append(str(meta.getResourceType()))
 		return {'json': {'types': sorted(out)}}
 
+	if op == 'connections':
+		# Every Mantle connection with the health check behind the Status column on its configuration page.
+		# Read from the same shared registry the gateway reads, so a test sees exactly what an operator does.
+		from com.codahale.metrics.health import SharedHealthCheckRegistries
+		registry = SharedHealthCheckRegistries.getDefault()
+		out = []
+		for name in registry.getNames():
+			if not (name.startswith('mantle.') and name.endswith('.status')):
+				continue
+			result = registry.runHealthCheck(name)
+			out.append({
+				'name': name[len('mantle.'):-len('.status')],
+				'healthy': bool(result.isHealthy()),
+				'message': result.getMessage(),
+			})
+		return {'json': {'connections': out}}
+
 	if op == 'ping':
 		return {'json': {'ok': True, 'time': system.date.now().getTime()}}
 

@@ -66,6 +66,19 @@ seed_config() {
     docker compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/${type%%/*}"
 }
 
+# trust_dev_ca: teaches the gateway to trust the dev broker's private CA.
+#
+# This is the same mechanism a plant uses for its own broker. Ignition loads every certificate in
+# data/certificates/supplemental into the JVM's default trust store at startup, and that is what Mantle's
+# ssl:// connections use — so trusting a private CA is a gateway-level thing an Ignition administrator
+# already knows how to do, and Mantle needs no trust-store setting of its own.
+trust_dev_ca() {
+    local dir=/usr/local/bin/ignition/data/certificates/supplemental
+    docker compose exec -T gateway mkdir -p "$dir"
+    docker compose cp dev/certs/ca.crt "gateway:$dir/mantle-dev-ca.crt" >/dev/null
+    docker compose exec -T -u root gateway chown -R ignition:ignition "$dir"
+}
+
 # seed_project <name> <source-dir>: an Ignition project, as files
 seed_project() {
     local name="$1" src="$2" dir=/usr/local/bin/ignition/data/projects
