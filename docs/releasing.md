@@ -2,7 +2,8 @@
 
 Where this stands, what is known, and what still has to be asked. Statements are marked **verified** (done here,
 or read in Inductive Automation's own docs), **reported** (forum posts, or research not confirmed first-hand), or
-**open**. Signing section written 2026-09-19; listing section rewritten 2026-09-20 from IA's own pages.
+**open**. Signing section written 2026-09-19; listing section rewritten 2026-09-20 from IA's own pages;
+signing decided and costed 2026-09-21.
 
 ## Signing
 
@@ -77,6 +78,47 @@ and listed on the Showcase, and their shipped `.modl` carries a bare self-signed
 So a CA certificate is a trust-and-polish decision, not a gate. A self-signed module installs; the administrator
 is asked to accept an unverifiable certificate once. For a free module whose source is public, that is a defensible
 trade — the source is the trust story. Revisit it if you start selling.
+
+### Decided 2026-09-21: self-signed for the first release
+
+**verified.** Reasoning, so it can be revisited rather than re-argued:
+
+- A free module with public source has the source as its trust story. A certificate adds nothing a reader
+  cannot already check.
+- Musson Industrial is listed on the Showcase shipping a bare self-signed certificate. It is not a gate.
+- It costs nothing and blocks nothing today.
+
+The argument **against** is real and worth restating: 8.3 quarantines modules with unsigned or
+"needs review" certificates, and an administrator has to explicitly trust them. That is an adoption tax. But
+it is a hypothesis about our users, not a measurement. **Revisit if more than one person reports trouble
+installing**, or when something starts being sold.
+
+Switching later costs four repository secrets and, for a cloud HSM, one property change
+(`ignition.signing.pkcs11CfgFile` in place of the keystore properties). Nothing has to be rebuilt.
+
+### What a certificate would cost, if the decision is revisited
+
+Prices are 2026, from reseller listings, and move; treat them as the shape rather than a quote.
+
+| | Cost | Keeps CD on hosted runners? |
+|---|---|---|
+| Self-signed | $0 | yes |
+| SignPath Foundation (free for OSS) | $0 | yes, **but the publisher is "SignPath Foundation"**, not Joy Automation |
+| Sectigo OV + USB token | ~$220/yr + $90–250 token | **no** |
+| DigiCert OV + token | ~$370–575/yr (+$120 for their token) | **no** |
+| Cloud HSM — DigiCert KeyLocker, SSL.com eSigner | eSigner from ~$180/yr; KeyLocker by quote | **yes** |
+
+Three things that matter more than the headline price:
+
+- **A USB token breaks hosted CI.** Since June 2023 the key must be on certified hardware, and a hosted
+  GitHub Actions runner cannot see a USB token. Signing would move to a self-hosted runner or a workstation.
+  **If a certificate is ever bought, buy cloud HSM, not a token.**
+- **Cloud HSM works with our Gradle plugin** — this was the open question, and it is now answered for
+  DigiCert KeyLocker, which ships a PKCS#11 library with documented jarsigner and GitHub Actions scripts.
+  That is exactly what `ignition.signing.pkcs11CfgFile` takes. **open:** SSL.com eSigner is cheaper and no
+  equivalent PKCS#11 documentation was found — ask them before choosing it.
+- **From 1 March 2026 maximum validity drops to 460 days** (from 39 months), so any certificate is an annual
+  renewal plus annual re-issuance work.
 
 ### If you do buy a certificate
 
@@ -250,11 +292,10 @@ on 8.3, so supporting both means separate builds. **reported**
       modules confirm the shape (Historian 1.3.9, OPC-UA 10.3.9, Perspective 3.3.9, all on 8.3.9). It is not
       semver and cannot be. `checkModuleArtifact` fails a build whose version is not `x.3.y`, and the release
       workflow rejects the tag before building.
-- [ ] **Sign the module.** *Decision still open.* Self-signed is enough to be listed (a leading open-source
-      Showcase vendor ships exactly that); a CA certificate on a hardware token buys a cleaner install prompt.
-      The machinery is done either way: `scripts/gen-signing-key.sh --secrets` produces a self-signed identity
-      and the four repository secrets, and the release workflow signs with them and refuses to publish
-      unsigned. Switching to a CA certificate later means replacing the secrets, nothing more.
+- [x] **Sign the module** — **decided 2026-09-21: self-signed** (reasoning above). The machinery is built and
+      verified. **Remaining action, and it is James's rather than mine:** run
+      `scripts/gen-signing-key.sh --secrets`, choose a passphrase, and paste the four values into the repo's
+      Actions secrets. The release workflow refuses to publish unsigned, so this gates the first release.
 - [x] **Re-audit dependency licences** — now automatic. `./gradlew checkDependencyLicenses` (part of `build`,
       so CI runs it on every change) reads each bundled jar's licence, following `<parent>` POMs, fails on the
       GPL family, and also fails if anything ships that `NOTICE` does not name. 25 dependencies, all
