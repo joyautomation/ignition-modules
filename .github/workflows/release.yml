@@ -6,15 +6,19 @@
 # disagree. Everything the Showcase and the gateway need is verified before anything is published, and the
 # release is created as a draft — the last step of publishing a module is a person deciding to.
 #
-# Signing uses three repository secrets. Without them the job fails rather than quietly shipping an unsigned
+# Signing uses four repository secrets. Without them the job fails rather than quietly shipping an unsigned
 # module, because an unsigned .modl only loads on a gateway started with -Dignition.allowunsignedmodules=true
 # and nobody should discover that from a download:
 #
 #   MODULE_SIGNING_KEYSTORE_B64   base64 of the PKCS#12 keystore
-#   MODULE_SIGNING_KEYSTORE_PASS  its password
+#   MODULE_SIGNING_KEYSTORE_PASS  its password (used for the keystore and the key)
 #   MODULE_SIGNING_ALIAS          the key alias inside it
+#   MODULE_SIGNING_CERT_B64       base64 of the PKCS#7 certificate chain (.p7b) — the plugin requires this
+#                                 separately from the keystore and fails without it
 #
-# docs/releasing.md explains how to make a self-signed one, which is enough to be listed.
+# scripts/gen-signing-key.sh makes a self-signed set, which is enough to be listed. All four names are the
+# plugin's own, verified against io.ia.sdk.modl 0.5.0 by signing a real build: note certPassword, not
+# keyPassword, which silently is not a property at all.
 name: Release
 
 on:
@@ -87,38 +91,53 @@ jobs:
           KEYSTORE_B64: ${{ secrets.MODULE_SIGNING_KEYSTORE_B64 }}
           KEYSTORE_PASS: ${{ secrets.MODULE_SIGNING_KEYSTORE_PASS }}
           ALIAS: ${{ secrets.MODULE_SIGNING_ALIAS }}
+          CERT_B64: ${{ secrets.MODULE_SIGNING_CERT_B64 }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::No signing keystore. Set MODULE_SIGNING_KEYSTORE_B64, MODULE_SIGNING_KEYSTORE_PASS" \
-                 "and MODULE_SIGNING_ALIAS; see docs/releasing.md. Refusing to publish an unsigned module."
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$CERT_B64" ] || [ -z "$ALIAS" ] || [ -z "$KEYSTORE_PASS" ]; then
+            echo "::error::Signing is not configured. Set MODULE_SIGNING_KEYSTORE_B64," \
+                 "MODULE_SIGNING_KEYSTORE_PASS, MODULE_SIGNING_ALIAS and MODULE_SIGNING_CERT_B64" \
+                 "(scripts/gen-signing-key.sh prints all four). Refusing to publish an unsigned module."
             exit 1
           fi
-          # Outside the workspace, so it cannot be picked up by a later step or an upload glob.
+          # Outside the workspace, so they cannot be picked up by a later step or an upload glob.
           keystore="$RUNNER_TEMP/signing.p12"
+          chain="$RUNNER_TEMP/signing.p7b"
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$keystore"
+          printf '%s' "$CERT_B64" | base64 -d > "$chain"
+          trap 'rm -f "$keystore" "$chain"' EXIT
           ./gradlew clean signModule \
             -PmantleVersion=${{ steps.version.outputs.version }} \
             -Pignition.signing.keystoreFile="$keystore" \
             -Pignition.signing.keystorePassword="$KEYSTORE_PASS" \
+            -Pignition.signing.certFile="$chain" \
             -Pignition.signing.certAlias="$ALIAS" \
-            -Pignition.signing.keyPassword="$KEYSTORE_PASS"
-          rm -f "$keystore"
+            -Pignition.signing.certPassword="$KEYSTORE_PASS"
         working-directory: ignition/mantle
 
       # A signed build is a different artifact from the one the tests ran against, so it gets checked again.
       - name: Verify the signed module
         run: |
-          ./gradlew checkModuleArtifact -PmantleVersion=${{ steps.version.outputs.version }}
-          modl=$(ls build/*.modl | head -1)
-          if [ "${modl}" != "${modl%unsigned.modl}" ]; then
-            echo "::error::signModule produced ${modl} — the module is not signed"; exit 1
+          # signModule leaves Mantle.unsigned.modl beside Mantle.modl, so pick the signed one by name rather
+          # than by glob order, and then prove it really is signed from its contents.
+          modl=build/Mantle.modl
+          if [ ! -f "$modl" ]; then
+            echo "::error::signModule did not produce $modl — the module is not signed"; exit 1
           fi
+          if ! unzip -l "$modl" | grep -q 'signatures.properties'; then
+            echo "::error::$modl has no signatures.properties — it is not actually signed"; exit 1
+          fi
+          if ! unzip -l "$modl" | grep -q 'certificates.p7b'; then
+            echo "::error::$modl carries no certificate chain"; exit 1
+          fi
+          ./gradlew checkModuleArtifact -PmantleVersion=${{ steps.version.outputs.version }}
           echo "artifact: $(basename "$modl") ($(du -h "$modl" | cut -f1))" | tee -a "$GITHUB_STEP_SUMMARY"
         working-directory: ignition/mantle
 
       - name: Checksums
         run: |
           cd ignition/mantle/build
+          # Only the signed artifact is published; the unsigned one stays on the runner.
+          rm -f Mantle.unsigned.modl
           sha256sum *.modl > SHA256SUMS
           cat SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
 

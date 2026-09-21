@@ -205,11 +205,19 @@ val checkModuleArtifact by tasks.registering {
     group = "verification"
     description = "Checks the built .modl carries its manifest fields, licence and documentation."
     dependsOn(tasks.named("zipModule"))
+    // Always re-run: the whole point is to look at the artifact on disk, which signModule replaces.
+    outputs.upToDateWhen { false }
 
     doLast {
-        val modl = layout.buildDirectory.get().asFile.listFiles { f -> f.name.endsWith(".modl") }
-            ?.maxByOrNull { it.lastModified() }
+        // signModule leaves Mantle.unsigned.modl beside the signed Mantle.modl. Check the signed one when
+        // there is one: it is the artifact that gets distributed, and it is not byte-identical to the other.
+        val built = layout.buildDirectory.get().asFile.listFiles { f -> f.name.endsWith(".modl") }.orEmpty()
+        val modl = built.firstOrNull { !it.name.endsWith("unsigned.modl") }
+            ?: built.firstOrNull()
             ?: throw GradleException("no .modl was built")
+        val signed = java.util.zip.ZipFile(modl).use { zip ->
+            zip.getEntry("signatures.properties") != null && zip.getEntry("certificates.p7b") != null
+        }
 
         val entries = mutableMapOf<String, ByteArray>()
         java.util.zip.ZipFile(modl).use { zip ->
@@ -250,7 +258,8 @@ val checkModuleArtifact by tasks.registering {
         if (problems.isNotEmpty()) {
             throw GradleException("${modl.name} is not fit to distribute:\n  " + problems.joinToString("\n  "))
         }
-        logger.lifecycle("${modl.name} (${modl.length() / 1024} KiB) carries its manifest, licence and documentation")
+        logger.lifecycle("${modl.name} (${modl.length() / 1024} KiB, ${if (signed) "signed" else "UNSIGNED"}) " +
+            "carries its manifest, licence and documentation")
     }
 }
 

@@ -27,7 +27,9 @@ fingerprint in `data/modules.json`. **verified**
 ### In this repo
 
 Each module signs itself when a keystore is configured, and builds unsigned otherwise, so development and CI need
-nothing (`mantle/build.gradle.kts`). The properties are the Gradle plugin's:
+nothing (`mantle/build.gradle.kts`). `scripts/gen-signing-key.sh` makes a self-signed identity and, with
+`--secrets`, prints the four values `.github/workflows/release.yml` needs. The properties are the Gradle
+plugin's, and **all five are required** — verified against io.ia.sdk.modl 0.5.0 by signing a real build:
 
 ```properties
 # ~/.gradle/gradle.properties  (never in the repo)
@@ -39,6 +41,17 @@ ignition.signing.certPassword=...
 # a hardware token or cloud HSM instead of a file (mutually exclusive with keystoreFile):
 # ignition.signing.pkcs11CfgFile=/path/to/pkcs11.cfg
 ```
+
+Two traps, both of which fail a release rather than a build:
+
+- **`certFile` is required even when the keystore already holds the chain.** Without it `signModule` stops with
+  *"Required certificate file location not found"*, and the only artifact left is `Mantle.unsigned.modl`.
+- **The key password property is `certPassword`, not `keyPassword`.** `keyPassword` is not a property at all,
+  so passing it looks fine and does nothing.
+
+A successful signing leaves `Mantle.modl` beside `Mantle.unsigned.modl`. The signed one contains
+`signatures.properties` and `certificates.p7b`; `./gradlew checkModuleArtifact` reports which one it looked at
+and whether it was signed, and the release workflow refuses to publish if the signed file is missing either.
 
 **Verified end to end with a throwaway self-signed certificate**: `signModule` ran, the signed module loaded on a
 gateway started **without** `-Dignition.allowunsignedmodules=true`, and the gateway recorded the fingerprint.
@@ -231,17 +244,28 @@ on 8.3, so supporting both means separate builds. **reported**
 - [ ] **Third-party notices.** The `.modl` bundles Eclipse Tahu (**EPL-2.0**), the HiveMQ MQTT client, Netty,
       Jackson and protobuf (Apache-2.0 / BSD). EPL-2.0 is weak copyleft: shipping Tahu unmodified is fine, but its
       licence and a notice of where to get the source have to travel with the module. Generate a `NOTICE` at build.
-- [ ] **A real version.** `0.1.0-SNAPSHOT` today, and the middle digit has to match the platform.
-- [ ] **Sign the module.** Self-signed is enough to be listed (a leading open-source Showcase vendor ships exactly
-      that); a CA certificate on a hardware token buys a cleaner install prompt. Decide which, then do it before
-      applying.
-- [ ] **Re-audit dependency licences** for anything GPL/LGPL/AGPL before each release. Clean today.
+- [x] **A real version.** `1.3.0`. The middle digit must match the platform's minor version — Inductive's own
+      modules confirm the shape (Historian 1.3.9, OPC-UA 10.3.9, Perspective 3.3.9, all on 8.3.9). It is not
+      semver and cannot be. `checkModuleArtifact` fails a build whose version is not `x.3.y`, and the release
+      workflow rejects the tag before building.
+- [ ] **Sign the module.** *Decision still open.* Self-signed is enough to be listed (a leading open-source
+      Showcase vendor ships exactly that); a CA certificate on a hardware token buys a cleaner install prompt.
+      The machinery is done either way: `scripts/gen-signing-key.sh --secrets` produces a self-signed identity
+      and the four repository secrets, and the release workflow signs with them and refuses to publish
+      unsigned. Switching to a CA certificate later means replacing the secrets, nothing more.
+- [x] **Re-audit dependency licences** — now automatic. `./gradlew checkDependencyLicenses` (part of `build`,
+      so CI runs it on every change) reads each bundled jar's licence, following `<parent>` POMs, fails on the
+      GPL family, and also fails if anything ships that `NOTICE` does not name. 25 dependencies, all
+      permissive except Tahu's EPL-2.0. Proven to bite by adding MySQL's GPL connector.
 - [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of approval.
-- [ ] **User documentation in the module** (`documentationFiles` puts it on the gateway's module page).
-- [x] **TLS and authenticated brokers.** Done 2026-09-20: a private CA, a listener that refuses anonymous
-      clients, and an edge publishing over `ssl://` with a username and password. No Mantle setting was
-      needed — the gateway's `data/certificates/supplemental/` reaches the JVM trust store. **Mutual TLS is
-      still unsupported**, which is worth saying on the product page rather than leaving to be discovered.
+- [x] **User documentation in the module.** `mantle/doc/index.html`, shipped through `documentationFiles`, so
+      it matches the build that is installed. `checkModuleArtifact` fails if it is missing.
+- [x] **TLS, authenticated brokers and mutual TLS.** Done 2026-09-20/21, and covered by CI rather than by
+      hand: a private CA, a listener that refuses anonymous clients, a listener that demands a client
+      certificate, and an edge publishing over `ssl://`. Server-side TLS needed no Mantle setting at all —
+      the gateway's `data/certificates/supplemental/` reaches the JVM trust store. Mutual TLS is three
+      settings. **Only Mosquitto 2 has been tested**; say so on the product page rather than let a HiveMQ or
+      AWS IoT Core user discover it.
 - [ ] **The remaining gaps in `mantle/README.md`**: mutual TLS, WebSocket brokers, devices from a real edge,
       a skewed edge clock, load.
 - [ ] **Sparkplug conformance**: run `sparkplug-tck-go`'s host profile in CI. Eclipse also runs a "Sparkplug
