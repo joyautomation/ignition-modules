@@ -1,0 +1,13 @@
+{
+  "profile": {
+    "type": "MQTT"
+  },
+  "settings": {
+    "brokerUrl": "ws://broker:8083/mqtt",
+    "keepAliveSeconds": 30,
+    "hostId": "joy-dev-ws",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "SparkplugWs",
+    "historizeByDefault": true
+  }
+}

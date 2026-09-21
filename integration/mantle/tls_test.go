@@ -226,9 +226,23 @@ func connackCode(t *testing.T, address string, connect []byte) byte {
 
 // "It works against Mosquitto" is a statement about Mosquitto. EMQX is the broker most likely to be found in
 // a plant after it, and it differs in the places Sparkplug leans on hardest: retained messages, will
-// delivery and session takeover. This does not prove Mantle works against every broker — HiveMQ, AWS IoT
-// Core and Azure are all still untested, and the product page says so — but it is the difference between one
-// implementation and two.
+// delivery and session takeover. With HiveMQ below that makes three implementations. AWS IoT Core and Azure
+// are still untested — they need accounts — and the product page says so.
 func TestTheEmqxConnectionIsHealthy(t *testing.T) {
 	requireHealthyConnection(t, "emqx-broker")
+}
+
+// HiveMQ is the broker the Sparkplug specification's own TCK is built on, which makes it the one a Sparkplug
+// host has least excuse for failing against.
+func TestTheHiveMqConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, "hivemq-broker")
+}
+
+// ── transports ───────────────────────────────────────────────────────────
+
+// ws:// takes a different path through the client than tcp:// — a WebSocket config built from the URL's
+// path — and it had never run. wss:// shares everything with this except the TLS layer, which the ssl://
+// tests already cover.
+func TestTheWebSocketConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, "ws-broker")
 }

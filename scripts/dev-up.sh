@@ -43,6 +43,10 @@ stage_client_certificate
 seed_config com.joyautomation.mantle/connection mtls-broker dev/config/mantle/mtls-broker
 # A second broker implementation. "It works against Mosquitto" is a statement about Mosquitto.
 seed_config com.joyautomation.mantle/connection emqx-broker dev/config/mantle/emqx-broker
+# MQTT over WebSockets, so ws:// is a tested path rather than a hopeful one
+seed_config com.joyautomation.mantle/connection ws-broker dev/config/mantle/ws-broker
+# A third broker implementation, and the one the Sparkplug TCK itself is built on
+seed_config com.joyautomation.mantle/connection hivemq-broker dev/config/mantle/hivemq-broker
 # what the integration tests observe the gateway through; it requires an Administrator login
 seed_project integration-api integration/gateway-project/integration-api
 # Trust the dev CA gateway-wide. This is how a plant trusts its own broker's certificate too: Ignition puts
@@ -66,7 +70,9 @@ broker    tcp://localhost:1883    anonymous (mosquitto)
           tcp://localhost:1884    mantle / mantle-dev-password
           ssl://localhost:8883    mantle / mantle-dev-password, CA at dev/certs/ca.crt
           ssl://localhost:8884    mutual TLS, client cert at dev/certs/client.crt
-emqx      tcp://localhost:1886    anonymous (EMQX, the second broker implementation)
+          ws://localhost:8083/mqtt  anonymous, over WebSockets
+emqx      tcp://localhost:1886    anonymous (EMQX)
+hivemq    tcp://localhost:1887    anonymous (HiveMQ CE)
 
 Run the integration tests (a real Nautilus edge node against this gateway):
   (cd integration && go test ./...)

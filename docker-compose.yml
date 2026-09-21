@@ -43,6 +43,7 @@ services:
       - "1884:1884"
       - "8883:8883"
       - "8884:8884"
+      - "8083:8083"
     volumes:
       - ./dev/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./dev/certs:/mosquitto/certs:ro
@@ -62,6 +63,13 @@ services:
       # EMQX defaults to refusing anonymous connections in 5.x; both of these are needed.
       EMQX_AUTHENTICATION: "[]"
       EMQX_LISTENERS__TCP__DEFAULT__ENABLE_AUTHN: "false"
+
+  # A third implementation. HiveMQ is the broker the Sparkplug specification's own TCK is built on, so it is
+  # the one a Sparkplug host has least excuse for not working against.
+  hivemq:
+    image: hivemq/hivemq-ce:latest
+    ports:
+      - "1887:1883"
 
 volumes:
   gateway-data:

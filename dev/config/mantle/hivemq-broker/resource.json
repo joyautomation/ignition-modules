@@ -1,0 +1,14 @@
+{
+  "scope": "A",
+  "description": "HiveMQ CE — the broker the Sparkplug TCK itself is built on",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json"
+  ],
+  "attributes": {
+    "uuid": "5d1c1f0e-7a54-4a4e-9a57-6b7f5a1d0006",
+    "enabled": true
+  }
+}

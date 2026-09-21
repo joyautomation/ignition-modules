@@ -1,0 +1,13 @@
+{
+  "profile": {
+    "type": "MQTT"
+  },
+  "settings": {
+    "brokerUrl": "tcp://hivemq:1883",
+    "keepAliveSeconds": 30,
+    "hostId": "joy-dev-hivemq",
+    "reorderTimeoutMs": 5000,
+    "tagProvider": "SparkplugHivemq",
+    "historizeByDefault": true
+  }
+}
