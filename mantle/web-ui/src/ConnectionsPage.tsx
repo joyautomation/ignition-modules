@@ -14,8 +14,25 @@ import { ExtensionPointDataGridPage, type ColumnDef } from "@inductiveautomation
 /** Must match SparkplugConnections.RESOURCE_TYPE on the gateway side. */
 const RESOURCE_TYPE = "com.joyautomation.mantle/connection";
 
+/**
+ * The column worth having. A connection that is down is obvious, but one that is up, told to historize and
+ * running on a gateway with no historian looks fine and records nothing — so the health check reports that as
+ * unhealthy and the message says what to do. See ConnectionHealth on the gateway side.
+ */
+function status({ row }: { row: { originalValue: any } }) {
+  const result = row.originalValue.healthchecks?.status?.result;
+  if (!row.originalValue.enabled) {
+    return "Disabled";
+  }
+  if (!result) {
+    return "—";
+  }
+  return `${result.healthy ? "OK" : "Problem"} — ${result.message ?? ""}`;
+}
+
 const COLUMN_DEFS: ColumnDef[] = [
   { fieldName: "name", header: "Name" },
+  { fieldName: "healthchecks.status.result.healthy", header: "Status", cell: status },
   // The page swaps this cell for the extension point's own label, so a new connection type shows up here
   // named rather than as its type id.
   { fieldName: "config.profile.type", header: "Type" },
@@ -53,10 +70,13 @@ export function MantleConnections() {
       pageTitle="Sparkplug Connections"
       resourceType={RESOURCE_TYPE}
       itemName="Connection"
-      resourceNoun="Sparkplug Connection"
+      // The generated form lowercases this into its own prose ("Enter a name for the connection.", "Set
+      // whether this connection is enabled…"), so a longer noun reads badly there. The page title and the
+      // navigation category already say Sparkplug.
+      resourceNoun="Connection"
       columnDefs={COLUMN_DEFS}
       blankStateConfig={BLANK_STATE}
-      defaultHiddenColumns={["config.settings.tagProvider", "description"]}
+      defaultHiddenColumns={["config.settings.tagProvider", "config.settings.historizeByDefault", "description"]}
     />
   );
 }

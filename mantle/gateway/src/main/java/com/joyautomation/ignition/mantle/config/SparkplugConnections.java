@@ -10,6 +10,7 @@ import com.inductiveautomation.ignition.gateway.config.ExtensionPointConfig;
 import com.inductiveautomation.ignition.gateway.config.ResourceTypeMeta;
 import com.inductiveautomation.ignition.gateway.config.actions.ResourceActionSet;
 import com.joyautomation.ignition.mantle.MantleGatewayHook;
+import com.joyautomation.ignition.mantle.status.ConnectionHealth;
 
 /** The connection types this module offers, and the resource type they are stored under. */
 public final class SparkplugConnections implements ExtensionPointCollection<ExtensionPoint<?>> {
@@ -40,6 +41,10 @@ public final class SparkplugConnections implements ExtensionPointCollection<Exte
                 .profileSchema(SparkplugConnectionProfile.class)
                 .openApiGroupName("Mantle")
                 .openApiTagName("Sparkplug Connections"))
+            // Puts each connection's health in the resource listing, under "status", which is what the
+            // configuration page's Status column reads. The %s is filled in with the connection's own name;
+            // ConnectionHealth registers the matching check when the connection starts.
+            .buildStatusDelegate(status -> status.instanceHealthCheck("status", ConnectionHealth.NAME_TEMPLATE))
             .build();
     }
 

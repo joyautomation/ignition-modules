@@ -411,6 +411,11 @@ public class ManagedTagSink implements TagSink {
      * a tag with history switched off looks exactly like a tag that is recording, and the whole point of this
      * module is that you should not have to configure anything for your data to be kept.
      */
+    /** Whether this sink was told to historize what arrives — the default, and the thing a user can turn off. */
+    public boolean historize() {
+        return historize;
+    }
+
     public String historian() {
         if (historyProvider != null) {
             return historyProvider;

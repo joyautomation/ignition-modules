@@ -43,6 +43,14 @@ its own (tags like `mantle/v0.1.0`); CI is path-filtered per module. See `README
   to `EMPTY`) and `.buildRouteDelegate(routes -> routes.profileSchema(...))`. The extension-point builder has
   `profileSchema`, not `configSchema`. Symptom: `/data/api/v1/resources/list/<module>/<type>` 404s while an IA
   module's own type 200s.
+- **A resource's Status column comes from a Dropwizard health check, not from your own API.** Register the
+  check in `SharedHealthCheckRegistries.getDefault()` under a name containing the resource's name, and point
+  the resource type at it with `.buildStatusDelegate(s -> s.instanceHealthCheck("status", "mantle.%s.status"))`
+  — the `%s` is filled in with the resource name. It then appears in the resource listing under
+  `healthchecks.status.result.{healthy,message}`, which is what the config page reads (`ConnectionHealth`).
+  `metrics-healthchecks` comes in transitively, no dependency needed. `HealthCheckRegistry` has `unregister`,
+  not `remove`. There is also `CriticalHealthCheck` (title + resolution text + resolution URL) for the
+  gateway-wide "here's the problem and the page that fixes it" banner — not used yet.
 - **Wicket is gone in 8.3** — zero classes in `gateway-api-8.3.9.jar`. The 8.1 config-page mechanism does not
   exist, and no amount of searching for it will help.
 - **An extension point's name and description are bundle KEYS, not text.** `AbstractExtensionPoint`'s

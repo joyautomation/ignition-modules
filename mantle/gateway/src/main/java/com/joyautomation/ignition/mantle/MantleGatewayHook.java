@@ -28,6 +28,7 @@ import com.joyautomation.ignition.mantle.config.MqttConnectionExtensionPoint;
 import com.joyautomation.ignition.mantle.config.SparkplugConnectionProfile;
 import com.joyautomation.ignition.mantle.config.SparkplugConnections;
 import com.joyautomation.ignition.mantle.mqtt.BrokerConnection;
+import com.joyautomation.ignition.mantle.status.ConnectionHealth;
 import com.joyautomation.ignition.mantle.status.ModuleStatus;
 import com.joyautomation.ignition.mantle.status.StatusRoutes;
 import com.joyautomation.ignition.mantle.tags.ManagedTagSink;
@@ -125,6 +126,34 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
                 // nodes we knew before a restart may be quiet; ask rather than wait for them to speak
                 connection.setOnConnected(() -> connection.host().requestRebirths(sink.knownNodes()));
                 running.put(name, new Running(connection, sink, writer, config.tagProvider().trim()));
+                // Read through to the live connection rather than capturing: the configuration page asks for
+                // this every time it refreshes, and it has to reflect the connection as it is now.
+                ConnectionHealth.register(name, new ConnectionHealth.State() {
+                    @Override
+                    public boolean connected() {
+                        return connection.isConnected();
+                    }
+
+                    @Override
+                    public String lastError() {
+                        return connection.lastError();
+                    }
+
+                    @Override
+                    public String historian() {
+                        return sink.historian();
+                    }
+
+                    @Override
+                    public boolean historize() {
+                        return sink.historize();
+                    }
+
+                    @Override
+                    public String brokerUrl() {
+                        return config.brokerUrl();
+                    }
+                });
                 connection.start();
                 logger.info("Broker connection '{}' starting: {} -> [{}]", name, config.brokerUrl(),
                     config.tagProvider());
@@ -138,6 +167,7 @@ public class MantleGatewayHook extends AbstractGatewayModuleHook {
         synchronized (lock) {
             Running r = running.remove(name);
             if (r != null) {
+                ConnectionHealth.unregister(name);
                 r.sink().removeWriter(r.writer());
                 r.connection().stop();
                 logger.info("Broker connection '{}' stopped.", name);
