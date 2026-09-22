@@ -23,7 +23,9 @@ company and the claims are yours to make. Port it when you are happy with it. Su
 > Point it at your broker. Tags create themselves, get historized, and stay yours to customize.
 > **There is no second set of tags to maintain.**
 >
-> **Free and open source** · Apache-2.0 · [Download Mantle 1.3.0 (.modl)](#) · [Source on GitHub](#)
+> **Free and open source** · Apache-2.0 ·
+> [Download Mantle 1.3.0 (.modl)](https://github.com/joyautomation/ignition-modules/releases/download/mantle/v1.3.0/Mantle.modl) ·
+> [Source on GitHub](https://github.com/joyautomation/ignition-modules)
 >
 > *Commercial support available from Joy Automation.*
 
@@ -109,8 +111,9 @@ Automation sells.
 
 ## Before this goes live
 
-- [ ] The download link must point at a real released `.modl`, not a GitHub Actions artifact (those need a
-      login, which is an email gate by another name).
+- [x] **The download link is live and needs no login** — verified anonymously, with every GitHub credential
+      unset: `HTTP 200`, 13,050,401 bytes, checksum matches the published `SHA256SUMS`, and the file is
+      signed by `CN = Joy Automation`. That is the requirement IA rejects applications over.
 - [ ] Decide whether to name MQTT Engine. **Nothing in this repo has tested it**, so any comparison has to be
       checked first-hand on a current version and dated, or left out. Leaving it out is fine — the page works
       on its own claims.

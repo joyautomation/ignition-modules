@@ -315,6 +315,10 @@ on 8.3, so supporting both means separate builds. **reported**
       so CI runs it on every change) reads each bundled jar's licence, following `<parent>` POMs, fails on the
       GPL family, and also fails if anything ships that `NOTICE` does not name. 25 dependencies, all
       permissive except Tahu's EPL-2.0. Proven to bite by adding MySQL's GPL connector.
+**Mantle 1.3.0 was released 2026-09-22**: signed with the self-signed Joy Automation certificate, published
+at `https://github.com/joyautomation/ignition-modules/releases/tag/mantle/v1.3.0`, and verified downloadable
+anonymously (no login, no email gate). The release workflow went green first time, signing included.
+
 - [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of
       approval. **Copy is drafted in `docs/product-page.md`**, including the two things a reviewer has
       rejected applications over: the price stated upfront (Free) and a direct download link with no email
