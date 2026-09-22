@@ -96,6 +96,8 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
   Sparkplug traffic arriving as tags, not merely by a socket opening.
 - **Sparkplug conformance**: 49 assertions of the TCK's host-application profile pass, none fail, graded from
   the packets on the wire.
+- **The published, signed `.modl` installing on a clean gateway** with no developer flags — the same file
+  this page links to, not a local build.
 
 Not yet tested, stated plainly:
 

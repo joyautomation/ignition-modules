@@ -319,6 +319,19 @@ on 8.3, so supporting both means separate builds. **reported**
 at `https://github.com/joyautomation/ignition-modules/releases/tag/mantle/v1.3.0`, and verified downloadable
 anonymously (no login, no email gate). The release workflow went green first time, signing included.
 
+**The published artifact was then installed on a clean 8.3.9 gateway started WITHOUT
+`-Dignition.allowunsignedmodules=true`** — the thing a self-signed module most needs to prove. **verified**,
+with its control:
+
+- With the certificate accepted (`ACCEPT_MODULE_CERTS`, the container equivalent of an administrator
+  clicking accept): *"Starting up module 'com.joyautomation.mantle' v1.3.0"*, *"Mantle module started"*, web
+  bundle serving 200, status route correctly refusing an anonymous caller with 401.
+- Without it: the gateway **stayed in Commissioning and Mantle never started**. So the certificate is
+  genuinely being checked, and the first result is not an artefact of the flag being ignored.
+
+That is also what an administrator will experience: a self-signed module is not silently rejected, it asks to
+be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acceptance.
+
 - [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of
       approval. **Copy is drafted in `docs/product-page.md`**, including the two things a reviewer has
       rejected applications over: the price stated upfront (Free) and a direct download link with no email
