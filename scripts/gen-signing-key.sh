@@ -24,6 +24,34 @@ days=3650
 
 mode="${1:-}"
 
+# Reads the passphrase. On a terminal it prompts (hidden). Without one — piped, or run through an editor's
+# shell integration — it reads stdin instead, so a password manager can feed it:
+#
+#   bw get password mantle-signing | scripts/gen-signing-key.sh --upload
+#
+# The silent version of this cost a confusing minute: bash suppresses a `read -p` prompt when stdin is not a
+# terminal, and `set -e` then exits on EOF, so the script did nothing and said nothing.
+read_passphrase() {
+    local prompt="$1"
+    if [ -n "${SIGNING_PASSWORD:-}" ]; then
+        return 0
+    fi
+    if [ -t 0 ]; then
+        read -r -s -p "$prompt" SIGNING_PASSWORD; echo >&2
+    else
+        read -r SIGNING_PASSWORD || true
+    fi
+    if [ -z "${SIGNING_PASSWORD:-}" ]; then
+        echo "No passphrase given." >&2
+        if [ ! -t 0 ]; then
+            echo "This is not a terminal, so it cannot prompt. Run it in a terminal, or pipe the" >&2
+            echo "passphrase in:  bw get password <item> | ${BASH_SOURCE[0]##*/} $mode" >&2
+        fi
+        exit 1
+    fi
+}
+
+
 if [ -f "$keystore" ] && [ "$mode" != "--secrets" ] && [ "$mode" != "--upload" ]; then
     echo "$keystore already exists. Delete .signing/ to make a new identity, or pass --upload (or"
     echo "--secrets) to send the repository secrets for the existing one."
@@ -34,12 +62,11 @@ mkdir -p "$out"
 chmod 700 "$out"
 
 if [ ! -f "$keystore" ]; then
-    if [ -z "${SIGNING_PASSWORD:-}" ]; then
-        read -r -s -p "Passphrase for the new signing keystore: " SIGNING_PASSWORD; echo
-        read -r -s -p "Again: " confirm; echo
+    read_passphrase "Passphrase for the new signing keystore: "
+    if [ -t 0 ]; then
+        read -r -s -p "Again: " confirm; echo >&2
         [ "$SIGNING_PASSWORD" = "$confirm" ] || { echo "they don't match" >&2; exit 1; }
     fi
-    [ -n "$SIGNING_PASSWORD" ] || { echo "a passphrase is required" >&2; exit 1; }
 
     echo "generating a $days-day self-signed code-signing key..."
     keytool -genkeypair -alias "$alias_name" -keyalg RSA -keysize 3072 -validity "$days" \
@@ -68,9 +95,7 @@ fi
 # terminal is a copy of that identity in scrollback, in a paste buffer, and possibly in a screen recording.
 # gh reads the files directly and nothing is echoed.
 if [ "$mode" = "--upload" ]; then
-    if [ -z "${SIGNING_PASSWORD:-}" ]; then
-        read -r -s -p "Passphrase for $keystore: " SIGNING_PASSWORD; echo
-    fi
+    read_passphrase "Passphrase for $keystore: "
     # Check it before uploading. A wrong passphrase here becomes a failed release later, which is a much
     # worse place to discover a typo.
     if ! keytool -list -keystore "$keystore" -storepass "$SIGNING_PASSWORD" -alias "$alias_name" \

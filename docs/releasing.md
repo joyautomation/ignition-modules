@@ -301,6 +301,11 @@ on 8.3, so supporting both means separate builds. **reported**
       scripts/gen-signing-key.sh --upload   # same passphrase; pushes the four secrets with gh
       ```
 
+      Both read the passphrase from stdin when there is no terminal, so a password manager can feed it —
+      `bw get password <item> | scripts/gen-signing-key.sh --upload`. (Bash suppresses a `read -p` prompt
+      when stdin is not a terminal, so the first version of this did nothing and said nothing when run
+      through an editor's shell integration.)
+
       `--upload` checks the passphrase actually opens the keystore before sending anything (a typo here
       becomes a failed release otherwise), and pipes the files straight into `gh secret set` so the keystore
       is never printed. `--secrets` prints the values instead, for pasting by hand — which puts a copy of the
