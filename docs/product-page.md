@@ -95,8 +95,13 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
 - **Three broker implementations** — Mosquitto 2, EMQX 5 and HiveMQ CE, the last being the broker the
   Sparkplug TCK itself is built on — and **two transports**, TCP and WebSockets. Each verified by real
   Sparkplug traffic arriving as tags, not merely by a socket opening.
-- **Sparkplug conformance**: 49 assertions of the TCK's host-application profile pass, none fail, graded from
-  the packets on the wire.
+- **Sparkplug conformance**: **94 assertions pass, none fail**, graded from the packets on the wire by the
+  Sparkplug Technology Compatibility Kit's host application profile. The gate deliberately misbehaves at the
+  edge — it drops a message so the host has to time out and request a rebirth, kills a device, and writes
+  tags so the host has to issue node and device commands — because an assertion nobody exercised is not an
+  assertion that passed. Five are not graded, and here is each one: an MQTT 5 clean-start rule that cannot
+  apply to a 3.1.1 connection; a command-value check the kit itself calls unobservable from a packet stream;
+  and three about the host disconnecting, which our integration suite covers instead.
 - **The published, signed `.modl` installing on a clean gateway** with no developer flags — the same file
   this page links to, not a local build.
 

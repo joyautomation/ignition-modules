@@ -121,15 +121,34 @@ public class EdgeSimulator {
         birth();
         System.out.printf("simulating %s/%s/%s%n", group, node, device);
 
+        // SIM_CONFORMANCE makes this edge do the two awkward things a host has to cope with but that a
+        // well-behaved simulator never does: deliver messages out of order, and kill a device. Both are
+        // graded by the Sparkplug TCK's host profile and neither happens on a happy path, so without this
+        // those assertions sit at "not observed" and the conformance number quietly means less than it looks.
+        boolean conformance = "1".equals(System.getenv("SIM_CONFORMANCE"));
+        boolean dropped = false;
+
         long end = seconds == Long.MAX_VALUE ? Long.MAX_VALUE : System.currentTimeMillis() + seconds * 1000;
         while (System.currentTimeMillis() < end) {
             Thread.sleep(1000);
             double t = System.currentTimeMillis() / 1000.0;
             float level = (float) (setpoint + 2 * Math.sin(t / 10));
+
+            if (conformance && !dropped && counter > 3) {
+                dropped = true;
+                dropOneMessage(level);
+            }
             publish("DDATA", true, true,
                 aliased(1, MetricDataType.Float, level),
                 aliased(3, MetricDataType.Boolean, level < setpoint),
                 aliased(4, MetricDataType.Int32, ++counter));
+        }
+
+        if (conformance) {
+            // A device death, so the host has to mark the device offline and its tags stale.
+            System.out.println("publishing DDEATH for " + device);
+            publish("DDEATH", true, false);
+            Thread.sleep(1500);
         }
         // an orderly exit still owes the host a death certificate
         client.publishWith().topic(topic("NDEATH", false)).payload(encode(payload(null, bdSeqMetric()))).send();
@@ -204,6 +223,23 @@ public class EdgeSimulator {
 
     private static Metric aliased(long alias, MetricDataType type, Object value) throws Exception {
         return new MetricBuilder(alias, type, value).createMetric();
+    }
+
+    /**
+     * Drops one sequence number: publishes N, never publishes N+1, then publishes N+2. That is what a lost
+     * QoS 0 message looks like, and it is the case the host profile's reordering assertions actually grade —
+     * a conformant host starts its reorder timer, gives up when the gap does not fill, and asks the node to
+     * birth again.
+     *
+     * <p>Deliberately a drop rather than a swap. Swapping two messages is also valid Sparkplug, but the TCK's
+     * gap detector is forward-only and has no memory of sequence numbers it has already seen, so one swap
+     * registers as three gaps, the last of which can never be filled — a phantom failure against a host that
+     * behaved perfectly. See docs/releasing.md.
+     */
+    private void dropOneMessage(float level) throws Exception {
+        long dropped = seq.getAndUpdate(s -> (s + 1) % 256);
+        System.out.printf("dropping DDATA seq %d — the host should time out and request a rebirth%n", dropped);
+        // nothing published for `dropped`; the next publish() call carries dropped+1
     }
 
     private synchronized void publish(String kind, boolean forDevice, boolean strip, Metric... metrics)

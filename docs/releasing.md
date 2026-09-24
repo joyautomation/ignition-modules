@@ -145,6 +145,24 @@ swap the component for their own build, which would require re-signing the modul
 it is the licence the Sparkplug reference implementation ships under, and what Cirrus Link's own modules are built
 on. Audit this again whenever a dependency is added; it is now the constraint most likely to bite.
 
+### A bug found in our own TCK
+
+Staging out-of-order delivery turned up a real defect in `sparkplug-tck-go`, worth fixing there:
+`findSeqGaps` (`internal/harness/scenarios_host_ordering.go`) is forward-only and keeps no memory of
+sequence numbers it has already seen. Publishing `…6, 8, 7, 9…` — legal Sparkplug, and exactly what a
+reorder buffer exists for — registers as **three** gaps rather than one:
+
+| sees | expects | |
+|---|---|---|
+| 8 | 7 | gap, later filled by 7 |
+| 7 | 9 | gap, later filled by 9 |
+| 9 | 8 | gap — but 8 already arrived, *before* 7 |
+
+The third can never be filled, so `tck-id-operational-behavior-host-reordering-rebirth` **fails against a
+host that behaved perfectly**. Mantle buffered 8, took 7, applied both in order and correctly did not ask
+for a rebirth. Our gate now drops a message instead of swapping two, which is the case that assertion is
+really about, but the detector should track seen sequence numbers rather than only the next expected one.
+
 ## Getting listed
 
 ### There is no module store in the gateway — the Showcase is a web listing
@@ -349,7 +367,9 @@ be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acc
       devices from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance, WebSockets and
       three broker implementations (Mosquitto, EMQX, HiveMQ) are done and covered by CI.
 - [x] **Sparkplug conformance** — done. `scripts/tck-conformance.sh` runs `sparkplug-tck-go`'s
-      host-application profile against a live Mantle in CI: 49 assertions pass, none fail. It grades from the
+      host-application profile against a live Mantle in CI: **94 assertions pass, none fail**, after the gate
+      was taught to provoke the host (drop a sequence number, kill a device, write tags) rather than only
+      watch a happy path — which had 49 passing and 36 sitting at "not observed". It grades from the
       packets on the wire and regenerates its catalogue from the Eclipse spec, so it tracks the
       specification. **open:** Eclipse also runs a "Sparkplug
       Compatible" programme with a public product list. **open: membership and cost.**

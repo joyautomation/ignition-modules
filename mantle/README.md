@@ -247,8 +247,20 @@ CI fails if any of these tests skips for want of setup.
 **Sparkplug conformance.** `scripts/tck-conformance.sh` runs
 [sparkplug-tck-go](https://github.com/joyautomation/sparkplug-tck-go)'s host-application profile: an
 in-process broker, Mantle connected to it as a host, and every normative assertion graded from the packets
-that crossed the wire. **49 assertions pass, none fail.** It runs in CI, and because that TCK regenerates its
-catalogue from the Eclipse specification it keeps up with the spec rather than with a hand-written list.
+that crossed the wire. **94 assertions pass, none fail.**
+
+The gate makes the edge misbehave on purpose — it **drops a sequence number** so the host has to start its
+reorder timer, give up and request a rebirth; publishes a **DDEATH**; and writes tags so the host has to
+issue **NCMD** and **DCMD**. Without that provocation only 49 assertions were graded and the rest sat at
+"not observed", which is a number that looks like conformance and is not.
+
+Five are not graded, each for a stated reason: an MQTT 5 clean-start rule that cannot apply to a 3.1.1
+connection; `dcmd-metric-value`, which the kit itself calls unobservable from a packet stream; and three
+about the host disconnecting, which the integration suite covers instead (`TestAnOrderly...`,
+`TestDataHeldWhileTheGatewayIsDown...`).
+
+It runs in CI, and because that TCK regenerates its catalogue from the Eclipse specification it keeps up with
+the spec rather than with a hand-written list.
 
 **Three broker implementations and two transports.** Mosquitto 2, EMQX 5 and HiveMQ CE — the last being the
 broker the Sparkplug TCK itself is built on — plus MQTT over WebSockets. All in the dev stack, all connected

@@ -44,6 +44,10 @@ echo "building the TCK..."
 (cd "$tck" && go build -o "$harness_bin" ./cmd/sparkplug-tck)
 
 cleanup() {
+    if [ -n "${poke_pid:-}" ]; then
+        kill "$poke_pid" 2>/dev/null || true
+        wait "$poke_pid" 2>/dev/null || true
+    fi
     if [ -n "${edge_pid:-}" ]; then
         kill "$edge_pid" 2>/dev/null || true
         wait "$edge_pid" 2>/dev/null || true
@@ -53,9 +57,13 @@ cleanup() {
         wait "$harness_pid" 2>/dev/null || true
     fi
     # Leave the dev stack as it was found: a connection pointing at a harness that is no longer listening
-    # would fail every later run of TestEveryConnectionIsHealthy.
+    # would fail every later run of TestEveryConnectionIsHealthy. The gateway may be stopped at this point
+    # (see stop_the_host_near_the_end), and unseeding needs it running.
+    docker compose up -d gateway >/dev/null 2>&1 || true
+    wait_for_gateway >/dev/null 2>&1 || true
     unseed_connection "$connection"
     docker compose restart gateway >/dev/null 2>&1 || true
+    wait_for_gateway >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -82,12 +90,53 @@ wait_for_gateway
 # grades N/A for want of any NBIRTH to answer, a rebirth to request, or a command to send — a conformance
 # claim that rests on assertions nobody exercised is not worth much.
 echo "publishing from an edge node so the host has something to answer..."
-(cd mantle && ./gradlew -q --console=plain :gateway:simulate \
+(cd mantle && SIM_CONFORMANCE=1 ./gradlew -q --console=plain :gateway:simulate \
     --args="tcp://localhost:$port TCKGroup TCKEdge 60" >"$results/edge.log" 2>&1) &
 edge_pid=$!
 
+# Make the host actually do the things the profile grades. Without this, 26 of the profile's assertions sit
+# at "no NCMD observed" / "no DCMD observed" — not because Mantle cannot send them, but because nothing asked
+# it to. An untested assertion is not a passed one, and a conformance number built out of them is worth very
+# little.
+#
+# Both writes go through the integration-api WebDev endpoint, which takes a plain gateway login, so this
+# works in CI where an API token cannot exist.
+poke() {
+    local op="$1" body="$2"
+    curl -sf -m 30 -u admin:password -H 'Content-Type: application/json' -d "$body" \
+        "$gateway/system/webdev/integration-api/api" 2>/dev/null
+}
+
+exercise_commands() {
+    local base="[SparkplugTCK]TCKGroup/TCKEdge"
+    # Wait for the node to have birthed and its tags to exist, or the writes go nowhere.
+    for _ in $(seq 1 30); do
+        if poke browse "{\"op\":\"browse\",\"path\":\"$base\"}" | grep -q 'Node Control'; then break; fi
+        sleep 2
+    done
+
+    # A write to a node-level tag makes Mantle publish NCMD; a write to a device metric makes it publish
+    # DCMD. One of each is enough — the assertions are about the shape of the message, not how many.
+    echo "  writing to a node tag (expect NCMD)..."
+    poke write "{\"op\":\"write\",\"paths\":[\"$base/Node Control/Rebirth\"],\"values\":[true]}" >/dev/null
+    sleep 3
+    echo "  writing to a device metric (expect DCMD)..."
+    poke write "{\"op\":\"write\",\"paths\":[\"$base/PLC1/Tank/Setpoint\"],\"values\":[42.0]}" >/dev/null
+}
+
+# Three assertions about the host disconnecting (its STATE death certificate, and whether the disconnect was
+# intentional) are deliberately NOT staged here. Stopping the gateway inside the capture window was tried:
+# Ignition's graceful shutdown takes longer than the window has left, so the DISCONNECT lands after the
+# harness has stopped listening, and pulling the stop earlier costs the 26 NCMD/DCMD assertions that need a
+# live host. Those three are covered by the integration suite instead — see the orderly-shutdown and
+# gateway-outage tests in integration/mantle.
+exercise_commands &
+poke_pid=$!
+
 echo "capturing..."
 wait "$harness_pid" && status=0 || status=$?
+kill "$poke_pid" 2>/dev/null || true
+wait "$poke_pid" 2>/dev/null || true
 harness_pid=
 kill "$edge_pid" 2>/dev/null || true
 wait "$edge_pid" 2>/dev/null || true
