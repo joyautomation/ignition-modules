@@ -66,9 +66,10 @@ reconnects and gateway restarts. Nothing has to be mirrored into a second tag tr
 A broker URL is the only setting that has to be filled in.
 
 And where configuration *is* genuinely missing, Mantle says so rather than running quietly. A gateway with no
-tag historian records nothing; Mantle reports that connection as a **problem**, in the Status column of the
-page you configured it on, with what to do about it. Silent data loss is the failure mode this module exists
-to prevent.
+tag historian records nothing; Mantle reports that connection as a **problem** in the Status column of the
+page you configured it on — and on the gateway's own home page, as a banner with a button that takes you
+straight to the page that fixes it. Silent data loss is the failure mode this module exists to prevent, and
+it is not prevented by a warning nobody goes looking for.
 
 ## Security
 

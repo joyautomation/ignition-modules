@@ -71,9 +71,11 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   beside `host.disk.fullDisk` and `jvm.threads.deadlock`. A health check that also implements
   `CriticalHealthCheck` (title, resolution text, resolution URL, action label) is what
   `OverviewRoutes.getCriticalProblems` reads for the gateway's home-page problem list. `ConnectionHealth`
-  implements it, **but no banner has actually been observed** — `/data/api/v1/overview/banners` shows only
-  the trial banner for a deliberately broken connection, and `/overview/problems` refuses basic auth. Look at
-  it in a browser before claiming it works.
+  implements it and **it works** — verified in a browser 2026-09-23: a broken connection puts a warning
+  banner on the gateway's home page carrying the check's own `getActionLabel()` ("Check the connection").
+  Note that `/data/api/v1/overview/banners` does **not** show it over basic auth and `/overview/problems`
+  refuses basic auth outright, so a script cannot see this — it needs a logged-in browser session. Do not
+  read a quiet API as "not implemented".
 - **`grep -r` skips binary files; `grep -ra` does not.** Searching extracted `.class` trees for a symbol
   without `-a` returns a confident, wrong "nothing references this". Always run a control search for a symbol
   known to be used before trusting a negative.

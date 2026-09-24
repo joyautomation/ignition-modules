@@ -26,11 +26,10 @@ import com.inductiveautomation.ignition.gateway.metrics.CriticalHealthCheck;
  * point is that the failure this module guards against is one nobody goes looking for, so it should arrive
  * unprompted rather than wait on the Sparkplug page.
  *
- * <p><b>Unverified:</b> {@code OverviewRoutes.getCriticalProblems} does read this registry and does call
- * these four methods, and these checks are registered beside the platform's own — but no banner was observed
- * on {@code /data/api/v1/overview/banners} for a deliberately broken connection. That endpoint may need a
- * browser session rather than the basic auth available to a script, so this needs looking at in a browser
- * before it is claimed anywhere.
+ * <p>Verified in a browser on 2026-09-23: a connection that cannot reach its broker puts a warning banner on
+ * the gateway's home page, carrying this check's own {@link #getActionLabel()}. It is worth knowing that the
+ * banners API does not show it over basic auth — only a logged-in session does — so a script checking that
+ * endpoint will wrongly conclude this does nothing.
  */
 public final class ConnectionHealth extends HealthCheck implements CriticalHealthCheck {
     /** {@code %s} is the connection's resource name; the gateway fills it in when it gathers the check. */
