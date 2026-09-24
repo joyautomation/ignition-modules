@@ -71,8 +71,12 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   beside `host.disk.fullDisk` and `jvm.threads.deadlock`. A health check that also implements
   `CriticalHealthCheck` (title, resolution text, resolution URL, action label) is what
   `OverviewRoutes.getCriticalProblems` reads for the gateway's home-page problem list. `ConnectionHealth`
-  implements it and **it works** — verified in a browser 2026-09-23: a broken connection puts a warning
-  banner on the gateway's home page carrying the check's own `getActionLabel()` ("Check the connection").
+  implements it and **it works** — verified in a browser 2026-09-23. Where each method surfaces on the home
+  page banner: `getTitle()` is the tooltip on the "warnings" link (so it names *which* connection),
+  `getActionLabel()` is the button, `getResolutionUrl()` is where the button goes. `getResolutionText()` was
+  not seen on the banner itself, but it and `getTitle()` are the two *abstract* methods on the interface —
+  they have to be implemented regardless, and the platform shows them where it chooses. Note the platform
+  files this under "Performance Warning", which is its framing, not ours.
   Note that `/data/api/v1/overview/banners` does **not** show it over basic auth and `/overview/problems`
   refuses basic auth outright, so a script cannot see this — it needs a logged-in browser session. Do not
   read a quiet API as "not implemented".
