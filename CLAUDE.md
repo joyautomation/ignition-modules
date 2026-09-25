@@ -150,6 +150,13 @@ and `sourcing.md` first. Rules specific to this project:
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 
+- **The trial-reset cron needs a token that `--fresh` destroys.** An API token belongs to a data volume, so
+  `dev-up.sh --fresh` invalidates the one in `.env.trial` and `keep-trial-alive.sh` then 401s every five
+  minutes for ever (379 times in one day, silently, into `/tmp/ignition-trial.log`). There is no script-only
+  way round it: the reset endpoint takes a token or a browser session, **`/data/app/login` is not a JSON
+  endpoint in 8.3** (404 — logins go through an identity-provider flow), and `gwcmd.sh` has no trial
+  command. Make a new token after a `--fresh`. `ignition/api-token` *is* a config resource type, so seeding
+  one from a file the way connections are seeded is the likely permanent fix — not tried yet.
 - **An expired trial makes the dev stack lie, not fail.** WebDev answers **402**, so anything going through
   the integration-api endpoint silently does nothing — `scripts/tck-conformance.sh` scored 84 instead of 94
   and the difference looked like a real regression from a code change. **Check `{"op":"ping"}` returns 200

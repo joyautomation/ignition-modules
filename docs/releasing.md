@@ -162,7 +162,20 @@ The third can never be filled, so `tck-id-operational-behavior-host-reordering-r
 host that behaved perfectly**. Mantle buffered 8, took 7, applied both in order and correctly did not ask
 for a rebirth.
 
-**Fixed** in `sparkplug-tck-go` (`e5527cb`, reorder-tolerant detector plus the table test that was missing).
+**Fixed** in `sparkplug-tck-go` PR #9 (`d1899fc` + `a9aad42`, merged 2026-09-25): the detector now buffers
+sequence numbers that arrive ahead of the one it is waiting for, so a swap is one filled gap rather than
+three, and recovery is matched on any of the edge's DBIRTH/NDATA/DDATA/DDEATH topics. It also gained the
+table test that was missing — which is how the bug survived in the first place.
+
+Re-run against the fixed kit, all four reordering assertions pass:
+
+```
+PASS  tck-id-operational-behavior-host-reordering-param     (gap before seq=7)
+PASS  tck-id-operational-behavior-host-reordering-start     (gap before seq=7)
+PASS  tck-id-operational-behavior-host-reordering-rebirth   (gap before seq=7)    <- the drop
+PASS  tck-id-operational-behavior-host-reordering-success   (gap before seq=15)   <- the swap
+```
+
 Our gate now does both provocations — a drop *and* a swap — and the swap, which used to produce that phantom
 failure, passes. 94 with the drop alone, **95** with both.
 

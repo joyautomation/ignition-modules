@@ -87,6 +87,19 @@ code="$(curl -s -m 15 -o /dev/null -w '%{http_code}' -X POST \
     -H "X-Ignition-API-Token: $IGNITION_API_TOKEN" "$gateway/data/api/v1/trial")"
 after="$(left)"
 
+# A 401 here means one specific thing and it is worth saying rather than repeating a generic failure every
+# five minutes for ever: an API token belongs to a data volume, so `dev-up.sh --fresh` invalidates it. This
+# job failed 379 times in one day saying only "reset FAILED (HTTP 401)", which nobody reads twice.
+if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+    echo "$(date -Is) reset FAILED (HTTP $code): the token in .env.trial is not valid on this gateway." >&2
+    echo "    An API token does not survive 'dev-up.sh --fresh' — a new data volume is a new gateway." >&2
+    echo "    Make a new one (gateway -> Security -> API Tokens) and put it in .env.trial:" >&2
+    echo "      echo 'IGNITION_API_TOKEN=...' > .env.trial" >&2
+    echo "    There is no way around this from a script: the reset endpoint takes a token or a browser" >&2
+    echo "    session, /data/app/login is not a JSON endpoint in 8.3, and gwcmd has no trial command." >&2
+    exit 1
+fi
+
 if [ "$code" != "200" ] || [ "$after" -le 0 ]; then
     echo "$(date -Is) reset FAILED (HTTP $code); $(pretty "$after") left" >&2
     exit 1

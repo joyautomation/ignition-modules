@@ -65,6 +65,10 @@ wait_for_gateway
 
 cat <<'EOF'
 
+NOTE: a fresh data volume is a new gateway, so any API token in .env.trial is now invalid and
+      scripts/keep-trial-alive.sh cannot reset the two-hour trial until you make a new one
+      (gateway -> Security -> API Tokens, then: echo 'IGNITION_API_TOKEN=...' > .env.trial)
+
 gateway   http://localhost:8088   (admin / password)
 broker    tcp://localhost:1883    anonymous (mosquitto)
           tcp://localhost:1884    mantle / mantle-dev-password

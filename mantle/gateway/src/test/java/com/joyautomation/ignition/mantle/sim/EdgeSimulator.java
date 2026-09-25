@@ -249,7 +249,7 @@ public class EdgeSimulator {
      *
      * <p>This used to be unusable: sparkplug-tck-go's gap detector was forward-only and scored one swap as
      * three gaps, the last unfillable, failing a host that had behaved perfectly. Fixed in that repo
-     * (e5527cb), and this is the scenario that proves it — it now passes rather than failing.
+     * (PR #9, d1899fc), and this is the scenario that proves it — it now passes rather than failing.
      */
     private void publishOutOfOrder(float level) throws Exception {
         long first = seq.getAndUpdate(s -> (s + 1) % 256);
