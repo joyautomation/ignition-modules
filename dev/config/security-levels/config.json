@@ -1,0 +1,26 @@
+{
+  "securityLevels": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "description": "System generated security level representing read and write privileges to Gateway configuration",
+              "name": "Administrator"
+            }
+          ],
+          "description": "Represents the roles that a user has.",
+          "name": "Roles"
+        }
+      ],
+      "description": "Represents a user who has been authenticated by the system.",
+      "name": "Authenticated"
+    },
+    {
+      "children": [],
+      "description": "Granted to API keys used by this repo's scripts \u2014 keep-trial-alive.sh, and anything else automated. A custom level exists because system-generated ones (Authenticated/Roles/Administrator) cannot be granted to an API key, which is why that field is greyed out.",
+      "name": "Automation"
+    }
+  ]
+}

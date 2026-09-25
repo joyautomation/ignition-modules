@@ -150,6 +150,18 @@ and `sourcing.md` first. Rules specific to this project:
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 
+- **Gateway config you do not want to rebuild by hand lives in `dev/config/` and is seeded by `dev-up.sh`.**
+  `scripts/save-dev-config.sh` snapshots it back out of a running gateway. Security levels and gateway
+  permissions are **singleton** resources — their files sit directly in the type folder, not under a
+  `<name>/` — hence `seed_singleton` beside `seed_config`.
+- **An API key needs `PermissionType.WRITE`, which resolves to the gateway's own `writePermissions`.**
+  Traced through `LicensingRoutes` (`POST /trial` requires WRITE) →`ApiTokenManager.TOKEN_WRITE` →
+  `AbstractGatewayAccessControlStrategy` → `GatewaySystemProperties.WritePermissions`. That defaults to
+  `AnyOf [Authenticated/Roles/Administrator]`, and **Administrator is system-generated so it cannot be
+  granted to a key** — which is why the level field is greyed out when you make one. The fix is a custom
+  level added to `writePermissions` as well as to the key; `dev/config/security-levels` and
+  `dev/config/security-properties` carry one called `Automation`. Note this is gateway-wide write, not
+  scoped to one route.
 - **The trial-reset cron needs a token that `--fresh` destroys.** An API token belongs to a data volume, so
   `dev-up.sh --fresh` invalidates the one in `.env.trial` and `keep-trial-alive.sh` then 401s every five
   minutes for ever (379 times in one day, silently, into `/tmp/ignition-trial.log`). There is no script-only

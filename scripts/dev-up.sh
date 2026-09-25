@@ -36,6 +36,21 @@ done
 docker compose start
 wait_for_gateway
 
+# The custom "Automation" security level, and the gateway Write Permissions that accept it. Both are
+# needed before an API key can be given write access: Administrator is system-generated and cannot be
+# granted to a key, which is why that field is greyed out in the UI. Seeded so this never has to be
+# rebuilt by hand after a --fresh.
+seed_singleton security-levels dev/config/security-levels
+seed_singleton security-properties dev/config/security-properties
+# An API key, if one has been saved with scripts/save-dev-config.sh. Without it the trial-reset cron
+# cannot work after a fresh volume.
+if [ -d dev/config/api-token ]; then
+    for token in dev/config/api-token/*/; do
+        [ -d "$token" ] || continue
+        seed_config ignition/api-token "$(basename "$token")" "$token"
+    done
+fi
+
 seed_config com.inductiveautomation.historian/historian-provider Core dev/config/core-historian
 seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker
 # Mutual TLS, so CI exercises the certificate path rather than skipping it

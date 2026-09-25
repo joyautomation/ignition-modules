@@ -189,6 +189,17 @@ unseed_connection() {
         "$gateway_config_dir/com.joyautomation.mantle/connection/$1" 2>/dev/null || true
 }
 
+# seed_singleton <type> <source-dir>: a config resource that has no name, so its files sit directly in the
+# type's folder rather than in a <name>/ under it — security-properties and security-levels are both like
+# this. Same docker cp as seed_config, different destination shape.
+seed_singleton() {
+    local type="$1" src="$2"
+    docker compose exec -T gateway mkdir -p "$gateway_config_dir/ignition/$type"
+    docker compose cp "$src/config.json" "gateway:$gateway_config_dir/ignition/$type/config.json" >/dev/null
+    docker compose cp "$src/resource.json" "gateway:$gateway_config_dir/ignition/$type/resource.json" >/dev/null
+    docker compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/ignition/$type"
+}
+
 # seed_project <name> <source-dir>: an Ignition project, as files
 seed_project() {
     local name="$1" src="$2" dir=/usr/local/bin/ignition/data/projects
