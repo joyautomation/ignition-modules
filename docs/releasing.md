@@ -353,11 +353,10 @@ with its control:
 That is also what an administrator will experience: a self-signed module is not silently rejected, it asks to
 be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acceptance.
 
-- [ ] **A product page on joyautomation.com** with everything the FAQ requires — IA reviews it as part of
-      approval. **Copy is drafted in `docs/product-page.md`**, including the two things a reviewer has
-      rejected applications over: the price stated upfront (Free) and a direct download link with no email
-      gate. It needs porting into the SvelteKit site (suggest `/software/mantle`, beside `/software/tentacle`)
-      and the claims are yours to approve before it goes public.
+- [x] **A product page on joyautomation.com** — **live at https://joyautomation.com/software/mantle**
+      (2026-09-24). Carries everything the FAQ requires, with the price stated upfront as Free and a direct
+      download link that needs no login — the two things a reviewer has rejected applications over. Says 94
+      assertions; it is now 95, worth correcting next time the page is touched.
 - [x] **User documentation in the module.** `mantle/doc/index.html`, shipped through `documentationFiles`, so
       it matches the build that is installed. `checkModuleArtifact` fails if it is missing.
 - [x] **TLS, authenticated brokers and mutual TLS.** Done 2026-09-20/21, and covered by CI rather than by

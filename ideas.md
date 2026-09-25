@@ -8,7 +8,15 @@ Status: **building** · **next** · **idea**
 
 ---
 
-## 1. Mantle for Ignition: Sparkplug B host that isn't a chore · **building** (`mantle/`)
+## 1. Mantle: Sparkplug B host that isn't a chore · **shipped** (`mantle/`)
+
+**1.3.0 released 2026-09-22.** Free, Apache-2.0, signed, at
+https://github.com/joyautomation/ignition-modules/releases — product page at
+https://joyautomation.com/software/mantle. 95 Sparkplug TCK assertions pass, none fail; three broker
+implementations and two transports in CI. Remaining gaps are listed in `mantle/README.md`.
+
+**Next for it, in order:** submit the Ignition Module Showcase application; `wss://`; AWS IoT Core and Azure
+(both need accounts).
 
 Tags appear as they are born, are historized unless you say otherwise, and are customized in place. No second
 set of tags. See `mantle/README.md`.
