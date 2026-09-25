@@ -267,10 +267,16 @@ broker the Sparkplug TCK itself is built on — over `tcp://`, `ssl://`, mutual 
 Seven connections come up with the dev stack, all connected and asserted on every CI run, and each verified
 to carry real Sparkplug traffic into tags rather than merely opening a socket.
 
+**An edge whose clock is an hour behind** still updates live values. This is the quietest failure the module
+has: the provider allows backfill, so Ignition routes any value older than a tag's current one into history
+and leaves the live value alone — a skewed edge would publish good data, look healthy on the wire, fill the
+historian, and never move the screen. `ManagedTagSink.liveTime` re-stamps live values to prevent it, and
+`TestAnEdgeWithABackwardClockStillUpdatesLiveValues` proves the guard works *and* that the test would notice
+if it stopped: with `liveTime` deliberately disabled the test fails, because no value ever becomes live.
+
 **Not yet exercised**: AWS IoT Core and Azure, which need accounts and differ on ALPN; devices
-(DBIRTH/DDEATH) from a real edge; an edge with a badly skewed clock; a real Designer session editing a tag
-(the suite uses `system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the
-edge; load.
+(DBIRTH/DDEATH) from a real edge; a real Designer session editing a tag (the suite uses
+`system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points
 are stored anyway, and it happens with no Sparkplug traffic at all, so it comes from Ignition restoring persisted

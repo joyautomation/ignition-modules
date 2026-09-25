@@ -25,18 +25,18 @@ named="api-token"
 
 save_singleton() {
     local type="$1" dest="dev/config/$type"
-    docker compose exec -T gateway test -f "$gateway_config_dir/ignition/$type/config.json" 2>/dev/null || {
+    compose exec -T gateway test -f "$gateway_config_dir/ignition/$type/config.json" 2>/dev/null || {
         echo "  $type: not present on the gateway, skipped"; return 0; }
     mkdir -p "$dest"
     for f in config.json resource.json; do
-        docker compose exec -T gateway cat "$gateway_config_dir/ignition/$type/$f" > "$dest/$f"
+        compose exec -T gateway cat "$gateway_config_dir/ignition/$type/$f" > "$dest/$f"
     done
     echo "  $type -> $dest"
 }
 
 save_named() {
     local type="$1" names
-    names="$(docker compose exec -T gateway sh -c \
+    names="$(compose exec -T gateway sh -c \
         "ls '$gateway_config_dir/ignition/$type' 2>/dev/null" | tr -d '\r')" || true
     if [ -z "$names" ]; then
         echo "  $type: none on the gateway, skipped"
@@ -46,7 +46,7 @@ save_named() {
         local dest="dev/config/$type/$name"
         mkdir -p "$dest"
         for f in config.json resource.json; do
-            docker compose exec -T gateway sh -c \
+            compose exec -T gateway sh -c \
                 "cat '$gateway_config_dir/ignition/$type/$name/$f' 2>/dev/null" > "$dest/$f" || true
             [ -s "$dest/$f" ] || rm -f "$dest/$f"
         done

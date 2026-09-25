@@ -230,7 +230,12 @@ public class EdgeSimulator {
     }
 
     private static Metric aliased(long alias, MetricDataType type, Object value) throws Exception {
-        return new MetricBuilder(alias, type, value).createMetric();
+        // The metric's own timestamp, not the payload's: a host takes the metric's when it has one
+        // (HostState prefers m.getTimestamp()), so skewing only the payload leaves the values untouched and
+        // a clock-skew test proves nothing. That is exactly what happened the first time.
+        return new MetricBuilder(alias, type, value)
+            .timestamp(new Date(System.currentTimeMillis() + SKEW_MS))
+            .createMetric();
     }
 
     /**
@@ -278,9 +283,18 @@ public class EdgeSimulator {
             .payload(ENCODER.getBytes(payload, strip)).send();
     }
 
+    /**
+     * SIM_CLOCK_SKEW_SECONDS shifts every timestamp this edge publishes. Negative means its clock runs
+     * behind the gateway's, which is the case that matters: the tag provider allows backfill, so Ignition
+     * sends any value older than a tag's current one to history and leaves the live value alone. An edge an
+     * hour behind would therefore go quiet on screen while looking perfectly healthy on the wire.
+     */
+    private static final long SKEW_MS = 1000L * Long.parseLong(
+        System.getenv().getOrDefault("SIM_CLOCK_SKEW_SECONDS", "0"));
+
     private static SparkplugBPayload payload(Long seq, Metric... metrics) {
         SparkplugBPayloadBuilder builder = seq == null ? new SparkplugBPayloadBuilder() : new SparkplugBPayloadBuilder(seq);
-        builder.setTimestamp(new Date());
+        builder.setTimestamp(new Date(System.currentTimeMillis() + SKEW_MS));
         builder.addMetrics(List.of(metrics));
         return builder.createPayload();
     }

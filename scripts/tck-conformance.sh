@@ -59,10 +59,10 @@ cleanup() {
     # Leave the dev stack as it was found: a connection pointing at a harness that is no longer listening
     # would fail every later run of TestEveryConnectionIsHealthy. The gateway may be stopped at this point
     # (see stop_the_host_near_the_end), and unseeding needs it running.
-    docker compose up -d gateway >/dev/null 2>&1 || true
+    compose up -d gateway >/dev/null 2>&1 || true
     wait_for_gateway >/dev/null 2>&1 || true
     unseed_connection "$connection"
-    docker compose restart gateway >/dev/null 2>&1 || true
+    compose restart gateway >/dev/null 2>&1 || true
     wait_for_gateway >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -83,7 +83,7 @@ done
 # back up. That is also why the harness window has to be long enough to contain a whole gateway restart.
 echo "pointing Mantle at it, and restarting the gateway..."
 seed_connection "$connection" "tcp://host.docker.internal:$port" tck-host SparkplugTCK
-docker compose restart gateway >/dev/null 2>&1
+compose restart gateway >/dev/null 2>&1
 wait_for_gateway
 
 # An edge node on the same broker, so the host has something to react to. Without it about half the profile

@@ -16,6 +16,6 @@ source "$root/scripts/lib.sh"
 (cd "$root/$module" && ./gradlew build)
 cd "$root"
 copy_module "$module"
-docker compose restart gateway
+compose restart gateway
 wait_for_gateway
 echo "reloaded $module at http://localhost:8088"

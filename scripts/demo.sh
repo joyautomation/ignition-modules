@@ -60,7 +60,7 @@ esac
 # The gateway's trial stops WebDev and the historian after two hours, which makes a demo look broken for a
 # reason that has nothing to do with the module. Start over rather than show that.
 if ! curl -s -m 5 http://localhost:8088/StatusPing | grep -q RUNNING \
-    || docker compose logs --since 3h gateway 2>/dev/null | grep -qi 'trial expired'; then
+    || compose logs --since 3h gateway 2>/dev/null | grep -qi 'trial expired'; then
     echo "the gateway is down or its trial has run out — rebuilding the stack"
     scripts/dev-up.sh --fresh
 fi

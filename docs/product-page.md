@@ -104,11 +104,13 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
   and three about the host disconnecting, which our integration suite covers instead.
 - **The published, signed `.modl` installing on a clean gateway** with no developer flags — the same file
   this page links to, not a local build.
+- **An edge whose clock is an hour behind** still moving live values, rather than silently filling the
+  historian while the screen stays frozen.
 
 Not yet tested, stated plainly:
 
 - **AWS IoT Core and Azure**, which differ on ALPN and need accounts to test against.
-- An edge with a badly skewed clock; sustained load.
+- Sustained load.
 
 ## Support
 

@@ -379,7 +379,7 @@ be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acc
       settings. **Only Mosquitto 2 has been tested**; say so on the product page rather than let a HiveMQ or
       AWS IoT Core user discover it.
 - [ ] **The remaining gaps in `mantle/README.md`**: AWS IoT Core and Azure (both need accounts), devices
-      from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance, every transport
+      from a real edge, load. Mutual TLS, Sparkplug conformance, every transport
       (`tcp`/`ssl`/mutual TLS/`ws`/`wss`) and three broker implementations are done and covered by CI.
 - [x] **Sparkplug conformance** — done. `scripts/tck-conformance.sh` runs `sparkplug-tck-go`'s
       host-application profile against a live Mantle in CI: **95 assertions pass, none fail**, after the gate

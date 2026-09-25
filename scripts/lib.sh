@@ -1,6 +1,21 @@
 # Shared by the dev scripts. Expects to be sourced with the repo root as the working directory.
 
 gateway_modules_dir=/usr/local/bin/ignition/user-lib/modules
+# Every script must go through this rather than calling `compose` directly.
+#
+# When dev/gateway.gwbk exists, dev-up.sh writes dev/compose.restore.yml to mount it and add -r. A
+# `docker compose` call that omits that override sees a different service definition and RECREATES the
+# container — which silently deletes everything in user-lib/modules, because that path is not in the data
+# volume. The gateway then logs "The file for module ... is missing" and every module route 404s. That has
+# now happened twice.
+compose() {
+    if [ -f dev/compose.restore.yml ]; then
+        docker compose -f docker-compose.yml -f dev/compose.restore.yml "$@"
+    else
+        docker compose "$@"
+    fi
+}
+
 gateway_config_dir=/usr/local/bin/ignition/data/config/resources/core
 
 copy_module() {
@@ -8,8 +23,8 @@ copy_module() {
     modl="$(find "$module/build" -maxdepth 1 -name '*.modl' | head -1)"
     [ -n "$modl" ] || { echo "no .modl in $module/build; run ./gradlew build there first" >&2; return 1; }
     name="$(basename "$modl")"
-    docker compose cp "$modl" "gateway:$gateway_modules_dir/$name" >/dev/null
-    docker compose exec -T -u root gateway chown ignition:ignition "$gateway_modules_dir/$name" 2>/dev/null || true
+    compose cp "$modl" "gateway:$gateway_modules_dir/$name" >/dev/null
+    compose exec -T -u root gateway chown ignition:ignition "$gateway_modules_dir/$name" 2>/dev/null || true
     repoint_module "$module" "$name"
 }
 
@@ -21,7 +36,7 @@ repoint_module() {
     id="$(grep -oE 'id\.set\("[^"]+"\)' "$module/build.gradle.kts" | head -1 | sed -E 's/.*"(.*)".*/\1/')"
     [ -n "$id" ] || return 0
     json="$(mktemp)"
-    docker compose cp "gateway:/usr/local/bin/ignition/data/modules.json" "$json" >/dev/null 2>&1 || {
+    compose cp "gateway:/usr/local/bin/ignition/data/modules.json" "$json" >/dev/null 2>&1 || {
         rm -f "$json"; return 0; }
     MODULE_ID="$id" MODL_NAME="$name" python3 - "$json" <<'PYEOF' || { rm -f "$json"; return 0; }
 import json, os, sys
@@ -37,10 +52,10 @@ json.dump(registry, open(path, "w"), indent=2)
 print("  registry repointed: %s -> %s" % (os.path.basename(old), name))
 open(path + ".stale", "w").write(os.path.basename(old))
 PYEOF
-    docker compose cp "$json" "gateway:/usr/local/bin/ignition/data/modules.json" >/dev/null
-    docker compose exec -T -u root gateway chown ignition:ignition /usr/local/bin/ignition/data/modules.json
+    compose cp "$json" "gateway:/usr/local/bin/ignition/data/modules.json" >/dev/null
+    compose exec -T -u root gateway chown ignition:ignition /usr/local/bin/ignition/data/modules.json
     if [ -f "$json.stale" ]; then
-        docker compose exec -T -u root gateway rm -f "$gateway_modules_dir/$(cat "$json.stale")" 2>/dev/null || true
+        compose exec -T -u root gateway rm -f "$gateway_modules_dir/$(cat "$json.stale")" 2>/dev/null || true
     fi
     rm -f "$json" "$json.stale"
 }
@@ -61,9 +76,9 @@ wait_for_gateway() {
 #   e.g. seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker
 seed_config() {
     local type="$1" name="$2" src="$3"
-    docker compose exec -T gateway mkdir -p "$gateway_config_dir/$type"
-    docker compose cp "$src" "gateway:$gateway_config_dir/$type/$name" >/dev/null
-    docker compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/${type%%/*}"
+    compose exec -T gateway mkdir -p "$gateway_config_dir/$type"
+    compose cp "$src" "gateway:$gateway_config_dir/$type/$name" >/dev/null
+    compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/${type%%/*}"
 }
 
 # trust_dev_ca: teaches the gateway to trust the dev broker's private CA.
@@ -74,9 +89,9 @@ seed_config() {
 # already knows how to do, and Mantle needs no trust-store setting of its own.
 trust_dev_ca() {
     local dir=/usr/local/bin/ignition/data/certificates/supplemental
-    docker compose exec -T gateway mkdir -p "$dir"
-    docker compose cp dev/certs/ca.crt "gateway:$dir/mantle-dev-ca.crt" >/dev/null
-    docker compose exec -T -u root gateway chown -R ignition:ignition "$dir"
+    compose exec -T gateway mkdir -p "$dir"
+    compose cp dev/certs/ca.crt "gateway:$dir/mantle-dev-ca.crt" >/dev/null
+    compose exec -T -u root gateway chown -R ignition:ignition "$dir"
 }
 
 # stage_client_certificate: the PEM pair the mtls-broker connection points at, inside the gateway.
@@ -86,10 +101,10 @@ trust_dev_ca() {
 # encrypted with the gateway's own key, so a committed one would not decrypt anywhere else.
 stage_client_certificate() {
     local dir=/usr/local/bin/ignition/data/mantle-certs
-    docker compose exec -T gateway mkdir -p "$dir"
-    docker compose cp dev/certs/client.crt "gateway:$dir/client.crt" >/dev/null
-    docker compose cp dev/certs/client.key "gateway:$dir/client.key" >/dev/null
-    docker compose exec -T -u root gateway chown -R ignition:ignition "$dir"
+    compose exec -T gateway mkdir -p "$dir"
+    compose cp dev/certs/client.crt "gateway:$dir/client.crt" >/dev/null
+    compose cp dev/certs/client.key "gateway:$dir/client.key" >/dev/null
+    compose exec -T -u root gateway chown -R ignition:ignition "$dir"
 }
 
 # seed_tls_connection: the TLS + username/password connection, built here rather than committed.
@@ -185,7 +200,7 @@ JSON
 
 # unseed_connection <name>: removes the resource directory again. Also needs a restart to take effect.
 unseed_connection() {
-    docker compose exec -T gateway rm -rf \
+    compose exec -T gateway rm -rf \
         "$gateway_config_dir/com.joyautomation.mantle/connection/$1" 2>/dev/null || true
 }
 
@@ -194,18 +209,18 @@ unseed_connection() {
 # this. Same docker cp as seed_config, different destination shape.
 seed_singleton() {
     local type="$1" src="$2"
-    docker compose exec -T gateway mkdir -p "$gateway_config_dir/ignition/$type"
-    docker compose cp "$src/config.json" "gateway:$gateway_config_dir/ignition/$type/config.json" >/dev/null
-    docker compose cp "$src/resource.json" "gateway:$gateway_config_dir/ignition/$type/resource.json" >/dev/null
-    docker compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/ignition/$type"
+    compose exec -T gateway mkdir -p "$gateway_config_dir/ignition/$type"
+    compose cp "$src/config.json" "gateway:$gateway_config_dir/ignition/$type/config.json" >/dev/null
+    compose cp "$src/resource.json" "gateway:$gateway_config_dir/ignition/$type/resource.json" >/dev/null
+    compose exec -T -u root gateway chown -R ignition:ignition "$gateway_config_dir/ignition/$type"
 }
 
 # seed_project <name> <source-dir>: an Ignition project, as files
 seed_project() {
     local name="$1" src="$2" dir=/usr/local/bin/ignition/data/projects
-    docker compose exec -T gateway rm -rf "$dir/$name"
-    docker compose cp "$src" "gateway:$dir/$name" >/dev/null
-    docker compose exec -T -u root gateway chown -R ignition:ignition "$dir/$name"
+    compose exec -T gateway rm -rf "$dir/$name"
+    compose cp "$src" "gateway:$dir/$name" >/dev/null
+    compose exec -T -u root gateway chown -R ignition:ignition "$dir/$name"
 }
 
 # build_nautilus prints the path to a nautilus binary built from the checkout beside this repo, building it

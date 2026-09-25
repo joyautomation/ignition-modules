@@ -128,6 +128,13 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   creation all hit it. See `ManagedTagSink.liveTime`.
 - **`configureTag` is asynchronous.** A value pushed right after it can be wiped when the tag initializes. See
   `ManagedTagSink.awaitDefinitions`.
+- **A host takes a metric's own timestamp over the payload's** (`HostState`: `m.getTimestamp() != null ?
+  m.getTimestamp() : payloadTs`), and `MetricBuilder` stamps every metric with *now*. So skewing only the
+  payload timestamp in `EdgeSimulator` changes nothing that reaches a value, and a clock-skew test built on
+  it passes against a deliberately broken guard.
+- **A tag that does not exist yet reads back `Good` with a nil value and the current time.** An integration
+  test that waits for "Good" therefore passes instantly, before anything has published. Wait for a value of
+  the right *type* (`v.Float()`), not for quality.
 - Ignition compresses analog history: a linear ramp is stored as two points. Test history with a zigzag.
 - A test that passes suspiciously fast deserves the same look as one that fails; everything local really is
   that fast (a Nautilus edge births in ~100 ms, a SIGKILL's will arrives in ~3 ms).
