@@ -247,11 +247,11 @@ CI fails if any of these tests skips for want of setup.
 **Sparkplug conformance.** `scripts/tck-conformance.sh` runs
 [sparkplug-tck-go](https://github.com/joyautomation/sparkplug-tck-go)'s host-application profile: an
 in-process broker, Mantle connected to it as a host, and every normative assertion graded from the packets
-that crossed the wire. **94 assertions pass, none fail.**
+that crossed the wire. **95 assertions pass, none fail.**
 
-The gate makes the edge misbehave on purpose — it **drops a sequence number** so the host has to start its
+The gate makes the edge misbehave on purpose — it **drops a sequence number**, **swaps two others**, so the host has to start its
 reorder timer, give up and request a rebirth; publishes a **DDEATH**; and writes tags so the host has to
-issue **NCMD** and **DCMD**. Without that provocation only 49 assertions were graded and the rest sat at
+issue **NCMD** and **DCMD**. Without that provocation only 49 were graded and the rest sat at
 "not observed", which is a number that looks like conformance and is not.
 
 Five are not graded, each for a stated reason: an MQTT 5 clean-start rule that cannot apply to a 3.1.1

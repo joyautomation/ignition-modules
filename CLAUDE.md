@@ -150,6 +150,10 @@ and `sourcing.md` first. Rules specific to this project:
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 
+- **An expired trial makes the dev stack lie, not fail.** WebDev answers **402**, so anything going through
+  the integration-api endpoint silently does nothing — `scripts/tck-conformance.sh` scored 84 instead of 94
+  and the difference looked like a real regression from a code change. **Check `{"op":"ping"}` returns 200
+  before trusting any comparison against this stack.** It is the same root cause as the suite hanging.
 - **The dev gateway's trial expires after two hours** and takes WebDev, the historian and the test API with it,
   so the integration suite hangs in its startup retry. `scripts/keep-trial-alive.sh --install-cron` handles it;
   the gateway only permits a reset once the trial has actually lapsed, so the job is a no-op until then.

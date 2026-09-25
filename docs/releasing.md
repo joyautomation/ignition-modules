@@ -160,8 +160,11 @@ reorder buffer exists for — registers as **three** gaps rather than one:
 
 The third can never be filled, so `tck-id-operational-behavior-host-reordering-rebirth` **fails against a
 host that behaved perfectly**. Mantle buffered 8, took 7, applied both in order and correctly did not ask
-for a rebirth. Our gate now drops a message instead of swapping two, which is the case that assertion is
-really about, but the detector should track seen sequence numbers rather than only the next expected one.
+for a rebirth.
+
+**Fixed** in `sparkplug-tck-go` (`e5527cb`, reorder-tolerant detector plus the table test that was missing).
+Our gate now does both provocations — a drop *and* a swap — and the swap, which used to produce that phantom
+failure, passes. 94 with the drop alone, **95** with both.
 
 ## Getting listed
 
@@ -367,7 +370,7 @@ be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acc
       devices from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance, WebSockets and
       three broker implementations (Mosquitto, EMQX, HiveMQ) are done and covered by CI.
 - [x] **Sparkplug conformance** — done. `scripts/tck-conformance.sh` runs `sparkplug-tck-go`'s
-      host-application profile against a live Mantle in CI: **94 assertions pass, none fail**, after the gate
+      host-application profile against a live Mantle in CI: **95 assertions pass, none fail**, after the gate
       was taught to provoke the host (drop a sequence number, kill a device, write tags) rather than only
       watch a happy path — which had 49 passing and 36 sitting at "not observed". It grades from the
       packets on the wire and regenerates its catalogue from the Eclipse spec, so it tracks the

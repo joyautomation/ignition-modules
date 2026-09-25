@@ -127,6 +127,7 @@ public class EdgeSimulator {
         // those assertions sit at "not observed" and the conformance number quietly means less than it looks.
         boolean conformance = "1".equals(System.getenv("SIM_CONFORMANCE"));
         boolean dropped = false;
+        boolean swapped = false;
 
         long end = seconds == Long.MAX_VALUE ? Long.MAX_VALUE : System.currentTimeMillis() + seconds * 1000;
         while (System.currentTimeMillis() < end) {
@@ -137,6 +138,13 @@ public class EdgeSimulator {
             if (conformance && !dropped && counter > 3) {
                 dropped = true;
                 dropOneMessage(level);
+            }
+            // Well after the drop and the rebirth it causes, so the two provocations are graded separately
+            // rather than tangled together.
+            if (conformance && dropped && !swapped && counter > 20) {
+                swapped = true;
+                publishOutOfOrder(level);
+                continue;
             }
             publish("DDATA", true, true,
                 aliased(1, MetricDataType.Float, level),
@@ -231,11 +239,32 @@ public class EdgeSimulator {
      * a conformant host starts its reorder timer, gives up when the gap does not fill, and asks the node to
      * birth again.
      *
-     * <p>Deliberately a drop rather than a swap. Swapping two messages is also valid Sparkplug, but the TCK's
-     * gap detector is forward-only and has no memory of sequence numbers it has already seen, so one swap
-     * registers as three gaps, the last of which can never be filled — a phantom failure against a host that
-     * behaved perfectly. See docs/releasing.md.
+     * <p>Paired with {@link #publishOutOfOrder}, which is the opposite case: a gap that fills in time, so a
+     * conformant host must <em>not</em> rebirth. Both are needed to grade the reordering assertions properly.
      */
+    /**
+     * Two DDATA messages with their sequence numbers the wrong way round — the gap that fills before the
+     * host's reorder timeout expires, so a conformant host applies both in order and does <em>not</em> ask
+     * for a rebirth. This is precisely what Mantle's reorder buffer is for.
+     *
+     * <p>This used to be unusable: sparkplug-tck-go's gap detector was forward-only and scored one swap as
+     * three gaps, the last unfillable, failing a host that had behaved perfectly. Fixed in that repo
+     * (e5527cb), and this is the scenario that proves it — it now passes rather than failing.
+     */
+    private void publishOutOfOrder(float level) throws Exception {
+        long first = seq.getAndUpdate(s -> (s + 1) % 256);
+        long second = seq.getAndUpdate(s -> (s + 1) % 256);
+        System.out.printf("publishing DDATA seq %d before %d (swap)%n", second, first);
+        publishWithSeq(second, aliased(4, MetricDataType.Int32, ++counter));
+        Thread.sleep(200);
+        publishWithSeq(first, aliased(1, MetricDataType.Float, level));
+    }
+
+    private synchronized void publishWithSeq(long sequence, Metric... metrics) throws Exception {
+        client.publishWith().topic(topic("DDATA", true)).qos(MqttQos.AT_MOST_ONCE)
+            .payload(ENCODER.getBytes(payload(sequence, metrics), true)).send();
+    }
+
     private void dropOneMessage(float level) throws Exception {
         long dropped = seq.getAndUpdate(s -> (s + 1) % 256);
         System.out.printf("dropping DDATA seq %d — the host should time out and request a rebirth%n", dropped);
