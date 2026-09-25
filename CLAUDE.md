@@ -150,6 +150,13 @@ and `sourcing.md` first. Rules specific to this project:
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 
+- **`--fresh` no longer destroys the gateway: `scripts/save-gateway.sh` takes a `.gwbk` and `dev-up.sh`
+  restores it into the new volume.** That is the only way to keep an API key, because the gateway shows its
+  value once and stores something derived from it — it cannot be rebuilt from a file the way a connection
+  can. The image takes `-r <file>` and restores on a clean volume only; it **aborts startup if that file is
+  missing**, so dev-up writes `dev/compose.restore.yml` only when `dev/gateway.gwbk` exists rather than
+  always declaring the mount. The backup holds credentials, so it is gitignored. **Run save-gateway.sh after
+  configuring anything through the web UI.**
 - **Gateway config you do not want to rebuild by hand lives in `dev/config/` and is seeded by `dev-up.sh`.**
   `scripts/save-dev-config.sh` snapshots it back out of a running gateway. Security levels and gateway
   permissions are **singleton** resources — their files sit directly in the type folder, not under a
