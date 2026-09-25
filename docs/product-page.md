@@ -93,8 +93,8 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
   stamped inside the outage
 - TLS, authenticated brokers and mutual TLS, each with its negative case
 - **Three broker implementations** — Mosquitto 2, EMQX 5 and HiveMQ CE, the last being the broker the
-  Sparkplug TCK itself is built on — and **two transports**, TCP and WebSockets. Each verified by real
-  Sparkplug traffic arriving as tags, not merely by a socket opening.
+  Sparkplug TCK itself is built on — over **every transport**: `tcp://`, `ssl://`, mutual TLS, `ws://` and
+  `wss://`. Each verified by real Sparkplug traffic arriving as tags, not merely by a socket opening.
 - **Sparkplug conformance**: **95 assertions pass, none fail**, graded from the packets on the wire by the
   Sparkplug Technology Compatibility Kit's host application profile. The gate deliberately misbehaves at the
   edge — it drops a message so the host has to time out and request a rebirth, kills a device, and writes
@@ -108,7 +108,6 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
 Not yet tested, stated plainly:
 
 - **AWS IoT Core and Azure**, which differ on ALPN and need accounts to test against.
-- `wss://` — WebSockets and TLS are each covered, but not the two together.
 - An edge with a badly skewed clock; sustained load.
 
 ## Support

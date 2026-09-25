@@ -378,9 +378,9 @@ be trusted once. The 8.3 "quarantine" tax is real but is a single deliberate acc
       the gateway's `data/certificates/supplemental/` reaches the JVM trust store. Mutual TLS is three
       settings. **Only Mosquitto 2 has been tested**; say so on the product page rather than let a HiveMQ or
       AWS IoT Core user discover it.
-- [ ] **The remaining gaps in `mantle/README.md`**: `wss://`, AWS IoT Core and Azure (both need accounts),
-      devices from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance, WebSockets and
-      three broker implementations (Mosquitto, EMQX, HiveMQ) are done and covered by CI.
+- [ ] **The remaining gaps in `mantle/README.md`**: AWS IoT Core and Azure (both need accounts), devices
+      from a real edge, a skewed edge clock, load. Mutual TLS, Sparkplug conformance, every transport
+      (`tcp`/`ssl`/mutual TLS/`ws`/`wss`) and three broker implementations are done and covered by CI.
 - [x] **Sparkplug conformance** — done. `scripts/tck-conformance.sh` runs `sparkplug-tck-go`'s
       host-application profile against a live Mantle in CI: **95 assertions pass, none fail**, after the gate
       was taught to provoke the host (drop a sequence number, kill a device, write tags) rather than only

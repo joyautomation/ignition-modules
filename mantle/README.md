@@ -262,16 +262,15 @@ about the host disconnecting, which the integration suite covers instead (`TestA
 It runs in CI, and because that TCK regenerates its catalogue from the Eclipse specification it keeps up with
 the spec rather than with a hand-written list.
 
-**Three broker implementations and two transports.** Mosquitto 2, EMQX 5 and HiveMQ CE — the last being the
-broker the Sparkplug TCK itself is built on — plus MQTT over WebSockets. All in the dev stack, all connected
-and asserted on every CI run, and each verified to carry real Sparkplug traffic into tags rather than merely
-opening a socket.
+**Three broker implementations and every transport.** Mosquitto 2, EMQX 5 and HiveMQ CE — the last being the
+broker the Sparkplug TCK itself is built on — over `tcp://`, `ssl://`, mutual TLS, `ws://` and `wss://`.
+Seven connections come up with the dev stack, all connected and asserted on every CI run, and each verified
+to carry real Sparkplug traffic into tags rather than merely opening a socket.
 
-**Not yet exercised**: `wss://` (it shares everything with `ws://` except the TLS layer, which `ssl://`
-covers, but the combination has not been run); AWS IoT Core and Azure, which need accounts and differ on
-ALPN; devices (DBIRTH/DDEATH) from a real edge; an edge with a badly skewed clock; a real Designer session
-editing a tag (the suite uses `system.tag.configure`, the scripted equivalent); Ignition Transmission or
-tentacle as the edge; load.
+**Not yet exercised**: AWS IoT Core and Azure, which need accounts and differ on ALPN; devices
+(DBIRTH/DDEATH) from a real edge; an edge with a badly skewed clock; a real Designer session editing a tag
+(the suite uses `system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the
+edge; load.
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points
 are stored anyway, and it happens with no Sparkplug traffic at all, so it comes from Ignition restoring persisted

@@ -241,8 +241,14 @@ func TestTheHiveMqConnectionIsHealthy(t *testing.T) {
 // ── transports ───────────────────────────────────────────────────────────
 
 // ws:// takes a different path through the client than tcp:// — a WebSocket config built from the URL's
-// path — and it had never run. wss:// shares everything with this except the TLS layer, which the ssl://
-// tests already cover.
+// path — and it had never run.
 func TestTheWebSocketConnectionIsHealthy(t *testing.T) {
 	requireHealthyConnection(t, "ws-broker")
+}
+
+// And the combination. ws:// and ssl:// are each covered on their own, but a WebSocket handshake inside a
+// TLS session is a third path again — and it is what a broker behind a reverse proxy usually offers, so it
+// is the one a plant is most likely to hand you.
+func TestTheSecureWebSocketConnectionIsHealthy(t *testing.T) {
+	requireHealthyConnection(t, "wss-broker")
 }

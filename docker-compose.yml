@@ -44,6 +44,7 @@ services:
       - "8883:8883"
       - "8884:8884"
       - "8083:8083"
+      - "8084:8084"
     volumes:
       - ./dev/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./dev/certs:/mosquitto/certs:ro
