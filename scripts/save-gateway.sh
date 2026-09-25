@@ -27,13 +27,37 @@ if ! docker compose ps --format '{{.Name}}' 2>/dev/null | grep -q gateway; then
 fi
 
 echo "taking a gateway backup..."
+# Remove any leftover first: gwcmd prompts before overwriting an existing file, and with no stdin that
+# surfaces as "java.util.NoSuchElementException: No line found" rather than anything about a prompt.
+docker compose exec -T gateway rm -f /tmp/save.gwbk
 docker compose exec -T gateway sh -lc 'cd /usr/local/bin/ignition && ./gwcmd.sh -b /tmp/save.gwbk' >/dev/null
-# Keep the previous one: a backup taken from a broken gateway is worse than the backup it replaced.
-[ -f "$out" ] && mv "$out" "$out.prev"
-docker compose cp gateway:/tmp/save.gwbk "$out" >/dev/null
+
+# Streamed out with `docker exec cat` rather than `docker compose cp`, and written to a temporary file
+# first. Both matter: dev/ is bind-mounted into the running gateway so the backup can be restored, and
+# writing straight to the destination — or moving the destination aside first — disturbs that mount. The
+# first version of this script did exactly that and left Docker refusing every later copy with
+# "mkdirat restore.gwbk: file exists".
+tmp="$out.new"
+docker exec "$(docker compose ps -q gateway)" cat /tmp/save.gwbk > "$tmp"
 docker compose exec -T gateway rm -f /tmp/save.gwbk
 
-printf 'saved %s (%s)\n' "$out" "$(du -h "$out" | cut -f1)"
+if ! python3 -c 'import zipfile,sys; zipfile.ZipFile(sys.argv[1]).namelist()' "$tmp" 2>/dev/null; then
+    echo "the backup did not come out as a readable archive; leaving $out alone" >&2
+    rm -f "$tmp"
+    exit 1
+fi
+
+# Keep the previous one: a backup taken from a broken gateway is worse than the backup it replaced.
+[ -f "$out" ] && cp "$out" "$out.prev"
+mv "$tmp" "$out"
+
+printf 'saved %s (%s, %s entries)\n' "$out" "$(du -h "$out" | cut -f1)" \
+    "$(python3 -c 'import zipfile,sys; print(len(zipfile.ZipFile(sys.argv[1]).namelist()))' "$out")"
+if python3 -c 'import zipfile,sys
+names = zipfile.ZipFile(sys.argv[1]).namelist()
+sys.exit(0 if any("api-token" in n for n in names) else 1)' "$out" 2>/dev/null; then
+    echo "  includes an API key — the trial-reset cron will survive a --fresh"
+fi
 [ -f "$out.prev" ] && printf 'previous backup kept at %s.prev\n' "$out"
 cat <<'EOF'
 

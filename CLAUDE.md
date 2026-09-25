@@ -161,6 +161,17 @@ and `sourcing.md` first. Rules specific to this project:
   `scripts/save-dev-config.sh` snapshots it back out of a running gateway. Security levels and gateway
   permissions are **singleton** resources — their files sit directly in the type folder, not under a
   `<name>/` — hence `seed_singleton` beside `seed_config`.
+- **An API key defaults to `secureChannelRequired: true`, so it 401s over plain HTTP** — and the dev
+  gateway only exposes 8088. That looks exactly like a permissions problem and is not one. It is a field in
+  the key's own config resource (`ignition/api-token/<name>/config.json`); the dev key has it false.
+- **Never bind-mount a file that a script replaces.** `dev/gateway.gwbk` was mounted directly at
+  `/restore.gwbk`; taking a new backup moved it aside, Docker recreated the source as a root-owned
+  directory, and from then on **every `docker compose cp` to that container failed** with
+  `mkdirat restore.gwbk: file exists`. Mount the directory (`./dev:/restore:ro`) instead — it survives the
+  file inside it being replaced. Streaming with `docker exec cat` also works when `cp` is wedged.
+- **`gwcmd.sh -b <file>` prompts before overwriting**, and with no stdin that surfaces as
+  `java.util.NoSuchElementException: No line found` rather than anything about a prompt. Delete the target
+  first.
 - **An API key needs `PermissionType.WRITE`, which resolves to the gateway's own `writePermissions`.**
   Traced through `LicensingRoutes` (`POST /trial` requires WRITE) →`ApiTokenManager.TOKEN_WRITE` →
   `AbstractGatewayAccessControlStrategy` → `GatewaySystemProperties.WritePermissions`. That defaults to
