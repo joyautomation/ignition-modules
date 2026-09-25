@@ -106,11 +106,14 @@ Tested against a live Ignition 8.3.9 gateway and a real Sparkplug edge node on e
   this page links to, not a local build.
 - **An edge whose clock is an hour behind** still moving live values, rather than silently filling the
   historian while the screen stays frozen.
+- **About 10,000 values a second** from a single edge for 45 seconds: no sequence gaps, no decode failures,
+  no rebirths.
 
 Not yet tested, stated plainly:
 
 - **AWS IoT Core and Azure**, which differ on ALPN and need accounts to test against.
-- Sustained load.
+- Many edge nodes at once. One node publishing ~10,000 values a second is covered; a hundred nodes
+  publishing normally is a different shape and has not been tried.
 
 ## Support
 

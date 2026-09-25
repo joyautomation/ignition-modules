@@ -131,7 +131,7 @@ public class EdgeSimulator {
 
         long end = seconds == Long.MAX_VALUE ? Long.MAX_VALUE : System.currentTimeMillis() + seconds * 1000;
         while (System.currentTimeMillis() < end) {
-            Thread.sleep(1000);
+            Thread.sleep(Math.max(1, 1000 / RATE_HZ));
             double t = System.currentTimeMillis() / 1000.0;
             float level = (float) (setpoint + 2 * Math.sin(t / 10));
 
@@ -146,10 +146,17 @@ public class EdgeSimulator {
                 publishOutOfOrder(level);
                 continue;
             }
-            publish("DDATA", true, true,
-                aliased(1, MetricDataType.Float, level),
-                aliased(3, MetricDataType.Boolean, level < setpoint),
-                aliased(4, MetricDataType.Int32, ++counter));
+            Metric[] metrics = new Metric[3 + EXTRA_METRICS];
+            metrics[0] = aliased(1, MetricDataType.Float, level);
+            metrics[1] = aliased(3, MetricDataType.Boolean, level < setpoint);
+            metrics[2] = aliased(4, MetricDataType.Int32, ++counter);
+            for (int i = 0; i < EXTRA_METRICS; i++) {
+                // A zigzag, not a ramp: Ignition's analog compression stores a straight line as two points,
+                // so a ramp would make the historian look idle under load.
+                metrics[3 + i] = aliased(EXTRA_ALIAS_BASE + i, MetricDataType.Float,
+                    (float) (i + (counter % 2 == 0 ? level : -level)));
+            }
+            publish("DDATA", true, true, metrics);
         }
 
         if (conformance) {
@@ -180,13 +187,24 @@ public class EdgeSimulator {
         Template motor = new TemplateBuilder().templateRef("Motor").definition(false)
             .addMetric(new MetricBuilder("Speed", MetricDataType.Int32, speed).createMetric())
             .addMetric(new MetricBuilder("Running", MetricDataType.Boolean, true).createMetric()).createTemplate();
-        publish("DBIRTH", true, false,
+        // One DBIRTH carrying everything, including any load metrics. A second DBIRTH for the same device
+        // would be a fresh birth and reset it, so the load metrics are declared here or not at all —
+        // otherwise the host rightly asks for a rebirth on the first alias it has never seen.
+        List<Metric> birth = new java.util.ArrayList<>(List.of(
             new MetricBuilder("Tank/Level", MetricDataType.Float, setpoint).alias(1L)
                 .properties(feet.createPropertySet()).createMetric(),
             new MetricBuilder("Tank/Setpoint", MetricDataType.Float, setpoint).alias(2L).createMetric(),
             new MetricBuilder("Pump/Running", MetricDataType.Boolean, false).alias(3L).createMetric(),
             new MetricBuilder("Counter", MetricDataType.Int32, counter).alias(4L).createMetric(),
-            new MetricBuilder("Motor1", MetricDataType.Template, motor).createMetric());
+            new MetricBuilder("Motor1", MetricDataType.Template, motor).createMetric()));
+        for (int i = 0; i < EXTRA_METRICS; i++) {
+            birth.add(new MetricBuilder("Load/Signal" + i, MetricDataType.Float, 0f)
+                .alias(EXTRA_ALIAS_BASE + i).createMetric());
+        }
+        publish("DBIRTH", true, false, birth.toArray(new Metric[0]));
+        if (EXTRA_METRICS > 0) {
+            System.out.printf("declared %d load metrics; publishing at %d Hz%n", EXTRA_METRICS, RATE_HZ);
+        }
     }
 
     private void onCommand(Mqtt3Publish publish) {
@@ -291,6 +309,13 @@ public class EdgeSimulator {
      */
     private static final long SKEW_MS = 1000L * Long.parseLong(
         System.getenv().getOrDefault("SIM_CLOCK_SKEW_SECONDS", "0"));
+
+    /** Publishes per second, and extra analog metrics per publish, for load runs. Defaults are the old 1 Hz. */
+    private static final int RATE_HZ = Integer.parseInt(System.getenv().getOrDefault("SIM_RATE_HZ", "1"));
+    private static final int EXTRA_METRICS =
+        Integer.parseInt(System.getenv().getOrDefault("SIM_EXTRA_METRICS", "0"));
+    /** Aliases 1-4 are the hand-written metrics; the load ones start after them. */
+    private static final long EXTRA_ALIAS_BASE = 100L;
 
     private static SparkplugBPayload payload(Long seq, Metric... metrics) {
         SparkplugBPayloadBuilder builder = seq == null ? new SparkplugBPayloadBuilder() : new SparkplugBPayloadBuilder(seq);

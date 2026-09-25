@@ -274,9 +274,16 @@ historian, and never move the screen. `ManagedTagSink.liveTime` re-stamps live v
 `TestAnEdgeWithABackwardClockStillUpdatesLiveValues` proves the guard works *and* that the test would notice
 if it stopped: with `liveTime` deliberately disabled the test fails, because no value ever becomes live.
 
+**Load.** One edge publishing 103 metrics at 100 Hz — about **10,000 values a second** — was carried for 45
+seconds with **no sequence gaps, no decode failures and no rebirths**, all 100 load tags created, and the
+edge's own counter arriving in Ignition intact (4,347 against 4,350 messages, the rest still in flight).
+`TestMantleKeepsUpWithAFastEdge` holds a smaller version of this in CI and measures the rate *from the tags*
+rather than from the module's counters, because a counter can climb while the tag tree falls behind.
+
 **Not yet exercised**: AWS IoT Core and Azure, which need accounts and differ on ALPN; devices
 (DBIRTH/DDEATH) from a real edge; a real Designer session editing a tag (the suite uses
-`system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; load.
+`system.tag.configure`, the scripted equivalent); Ignition Transmission or tentacle as the edge; many edge
+nodes at once (this was one node publishing hard, not a hundred publishing normally).
 
 Known: each gateway boot logs one `Failed to store N points ... historian-name=Core`. Row counts show those points
 are stored anyway, and it happens with no Sparkplug traffic at all, so it comes from Ignition restoring persisted
