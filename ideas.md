@@ -44,7 +44,13 @@ Follow-ons, roughly in order of value:
   store-and-forward marked historical (`sparkplug/rbe.go`, `sparkplug/storeforward.go`), UDTs as templates.
   Same philosophy: point it at a folder, no mirrored tag tree.
 
-## 2. Nautilus HMI for Perspective: components and themes · **next**
+## 2. Nautilus HMI for Perspective: components and themes · **next** (designed: `docs/perspective-ui.md`)
+
+The route is decided and the riskiest assumption is checked: Svelte 5 stays the single implementation,
+custom elements are the public API, one generic React adapter hosts them. `TankGlyph.svelte` compiles to a
+custom element with zero warnings, and the theme is CSS custom properties, which cross the shadow boundary.
+Two modules: a theme pack (no JavaScript, useful alone) and the component module. **Next action is the spike
+in `docs/perspective-ui.md`, not the 54 components.**
 
 People open Perspective and face a blank canvas and a grey default theme. `@joyautomation/nautilus-hmi` already
 has the answer: ~55 Svelte 5 components (Tank, Pump, Valve, Pipe, Gauge, TrendChart, Sparkline, AlarmBanner,
