@@ -1,0 +1,13 @@
+{
+  "scope": "G",
+  "description": "Nautilus light theme for Perspective.",
+  "version": 1,
+  "restricted": false,
+  "overridable": true,
+  "files": [
+    "config.json",
+    "index.css",
+    "variables.css"
+  ],
+  "attributes": {}
+}
