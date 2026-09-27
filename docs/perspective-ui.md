@@ -43,6 +43,31 @@ Custom properties are inherited, so they **cross the shadow DOM boundary**. A Pe
 style these components from the outside with no bridging code. This is what makes the theme pack useful on
 its own *and* makes the two modules compose instead of collide.
 
+**verified — a custom element renders, and takes props as properties.** `Tank.svelte` compiled with
+`customElement: true` and no source changes, loaded in a plain page: shadow root, `<svg>` inside it, paints
+at 220px, and `Object.assign(el, {levelPct, tempC, heaterPct, label, width})` drives it. Confirmed
+2026-09-27 in Chrome.
+
+**verified — page-level custom properties DO cross into the shadow root.** Read from inside
+`nautilus-tank`'s shadow root, `--s1` resolves to `#3987e5`, the value `theme.css` sets on the page. This
+was a kill criterion and it is cleared: the theme pack and the component module compose.
+
+**verified — 5 of the 54 components cannot be custom elements at all.** `TankGlyph`, `PumpGlyph`,
+`ValveGlyph`, `Pipe` and `FlowLink` render an SVG *fragment* (`<g>`), designed to sit inside an `<svg>` the
+caller owns. A custom element is an HTML-namespace host, so its shadow root has no `<svg>` to render into
+and the element paints nothing — measured host box `0x0`. It still *compiles* with zero warnings, which is
+why the earlier "compiles to a custom element" check did not catch it; compiling is not rendering.
+
+The control that makes this a real finding rather than a broken component: the same `TankGlyph`, mounted as
+a plain Svelte component into an `<svg>` we own, paints correctly and picks its colour up from `--s1`. Same
+component, same props, same page — only the boundary differs.
+
+This is a scoping fact, not a blocker. Each glyph has a standalone sibling that is an `<svg>` root and works
+(`TankGlyph`/`Tank`, `PumpGlyph`/`Pump`, `ValveGlyph`/`Valve`), and `Pipe`/`FlowLink` are connectors that
+only mean anything inside a diagram. The glyphs are a *composition* API: the way they reach Perspective is
+inside a container component that owns one `<svg>` — `Mimic` or `CoordinateCanvas` — not individually. That
+container, not the glyph, is the thing to wrap.
+
 **reported — React 19 added first-class custom element support; React 18 did not.** On 18, a non-primitive
 prop set as a JSX attribute is stringified, and a `CustomEvent` does not arrive as an `onFoo` prop. Both need
 a `ref`. Not confirmed against Perspective here; the spike settles it.
@@ -82,6 +107,8 @@ before it is discovered on the fortieth.**
 - Does a Perspective **binding** update the element without a remount?
 - Does the Designer palette need anything beyond registration — icon, category, schema?
 - Does Perspective's own CSS reset reach inside the shadow root, or do the components need their own?
+  (Partly answered: custom *properties* cross the boundary — **verified**. A CSS *reset* is ordinary
+  selector-based CSS and does not, which is the shadow DOM working as intended.)
 - Do focus, keyboard and screen readers behave across the shadow boundary? **open**, and the most likely
   source of unpleasant surprises for `AckButton`, `ConfirmDialog` and `AlarmTable`.
 - Bundle shape: one bundle of 54 components, or lazy per component?
@@ -99,8 +126,10 @@ grounds that step 3 looks big.
 
 # The spike
 
-**One component, all the way onto a Perspective screen, bound to a Mantle tag.** `TankGlyph` — it takes a
-numeric level, has visual state, and is the component whose value is most obvious when it is wrong.
+**One component, all the way onto a Perspective screen, bound to a Mantle tag.** `Tank` — not `TankGlyph`,
+which step 1 showed cannot be a custom element at all (see *What is actually known*). `Tank` takes a numeric
+`levelPct`, has visual state, owns its own `<svg>`, and is the direct analogue of Perspective's stock Vessel,
+so it is the component whose value is most obvious when it is wrong.
 
 The point is not to produce reusable code. It is to find out which of the open questions above have ugly
 answers, while the cost of changing direction is one component rather than fifty-four.
@@ -115,9 +144,11 @@ Not "it renders". Renders is the easy half.
 
 ## Steps
 
-1. **Build one custom element.** `TankGlyph.svelte` + `<svelte:options customElement="nautilus-tank" />`,
-   compiled to a UMD bundle the way `mantle/web-ui` already is. Confirm it works in a plain HTML page first,
-   with no Ignition anywhere — a bug found here is worth ten found later.
+1. ~~**Build one custom element.**~~ **DONE 2026-09-27.** `Tank.svelte` + `<svelte:options
+   customElement="nautilus-tank" />`, Vite IIFE bundle, 59 kB for two components, zero warnings. Works in a
+   plain HTML page with no Ignition anywhere, and doing it there first is what turned up the `<g>` problem
+   while it cost one afternoon instead of forty. The wrappers were generated *around* the originals rather
+   than edited into them, so nothing in `nautilus/hmi` changed.
 
 2. **Register it as a Perspective component.** This is the unknown with the least documentation. The
    `perspective-component` SDK example is the scaffold; expect a Java side (component descriptor, property
