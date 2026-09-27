@@ -112,6 +112,15 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   while `data/modules.json` — which *is* in the volume — still points at it, and the gateway logs
   *"The file for module 'com.joyautomation.mantle' is missing and will not be loaded"*. Re-run
   `scripts/install-module.sh mantle`. Symptom: every module route 404s.
+- **A module installed through the web UI is QUARANTINED pending certificate acceptance**, and
+  `-Dignition.allowunsignedmodules=true` does not cover it. The log line is
+  *"Moving module <name> to quarantine because certificate not yet accepted"*, and the only symptom
+  otherwise is that every one of its resources 404s — `/res/<alias>/js/<file>.js` included — while the
+  install itself reported success. Mantle never hits this because `ACCEPT_MODULE_CERTS` auto-accepts it on
+  the first boot of a fresh volume; a module added by hand to an existing volume gets no such help, and has
+  to be trusted in Config → Modules. There is a modules REST API (the install logs
+  `route-group=api, route-path=/v1/modules/install`) but `/data/api/v1/modules{,/list,/quarantine}` all
+  answer *"No route"* under both basic auth and an API token, so the acceptance is a browser action.
 - **A fresh data volume invalidates the API token in `.env.trial`.** `dev-up.sh --fresh` therefore breaks the
   trial-reset cron until a new token is made by hand. Anything scripted should go through the integration-api
   WebDev endpoint (basic auth) or `docker cp`, never an API token — CI can never have one.
