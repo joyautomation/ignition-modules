@@ -204,6 +204,21 @@ unseed_connection() {
         "$gateway_config_dir/com.joyautomation.mantle/connection/$1" 2>/dev/null || true
 }
 
+# seed_files <dest-dir> <source-dir>: copies a resource's FILES, not the directory.
+#
+# `docker cp somedir gateway:/path/somedir` behaves differently depending on whether the destination already
+# exists: first time it creates it, second time it nests a copy inside. That silently left a stale theme in
+# place while a fresh one sat in `themes/nautilus-dark/nautilus-dark/`, and the gateway went on serving the
+# old file. Copying the files one at a time is idempotent.
+seed_files() {
+    local dest="$1" src="$2" f
+    compose exec -T gateway mkdir -p "$dest"
+    for f in "$src"/*; do
+        [ -f "$f" ] || continue
+        compose cp "$f" "gateway:$dest/$(basename "$f")" >/dev/null
+    done
+}
+
 # seed_singleton <type> <source-dir>: a config resource that has no name, so its files sit directly in the
 # type's folder rather than in a <name>/ under it — security-properties and security-levels are both like
 # this. Same docker cp as seed_config, different destination shape.

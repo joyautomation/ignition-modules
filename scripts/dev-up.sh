@@ -84,8 +84,10 @@ fi
 # a --fresh and can actually be looked at in a browser, which is the only way a theme is ever verified.
 for theme in dev/config/perspective-themes/*/; do
     [ -d "$theme" ] || continue
-    seed_config com.inductiveautomation.perspective/themes "$(basename "$theme")" "$theme"
+    seed_files "$gateway_config_dir/com.inductiveautomation.perspective/themes/$(basename "$theme")" "$theme"
 done
+compose exec -T -u root gateway chown -R ignition:ignition \
+    "$gateway_config_dir/com.inductiveautomation.perspective" 2>/dev/null || true
 
 seed_config com.inductiveautomation.historian/historian-provider Core dev/config/core-historian
 seed_config com.joyautomation.mantle/connection dev-broker dev/config/mantle/dev-broker

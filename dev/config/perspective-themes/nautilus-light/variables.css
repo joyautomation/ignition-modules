@@ -59,17 +59,17 @@
     --n-weight-eyebrow: 700;
     --n-weight-numeric: 650;
 
-    /* neutral ramp, mixed from this theme's ground and ink */
-    --neutral-10: color-mix(in srgb, var(--n-ink) 100%, var(--n-bg) 0%);
-    --neutral-20: color-mix(in srgb, var(--n-ink) 89%, var(--n-bg) 11%);
-    --neutral-30: color-mix(in srgb, var(--n-ink) 78%, var(--n-bg) 22%);
-    --neutral-40: color-mix(in srgb, var(--n-ink) 67%, var(--n-bg) 33%);
-    --neutral-50: color-mix(in srgb, var(--n-ink) 56%, var(--n-bg) 44%);
-    --neutral-60: color-mix(in srgb, var(--n-ink) 44%, var(--n-bg) 56%);
-    --neutral-70: color-mix(in srgb, var(--n-ink) 33%, var(--n-bg) 67%);
-    --neutral-80: color-mix(in srgb, var(--n-ink) 22%, var(--n-bg) 78%);
-    --neutral-90: color-mix(in srgb, var(--n-ink) 11%, var(--n-bg) 89%);
-    --neutral-100: color-mix(in srgb, var(--n-ink) 0%, var(--n-bg) 100%);
+    /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue (96deg) */
+    --neutral-10: #fafaf9;
+    --neutral-20: #e6e5e3;
+    --neutral-30: #d5d4d0;
+    --neutral-40: #a3a19a;
+    --neutral-50: #74736a;
+    --neutral-60: #55544d;
+    --neutral-70: #42413b;
+    --neutral-80: #272622;
+    --neutral-90: #1a1a17;
+    --neutral-100: #0b0b09;
 
     /* Nautilus tokens mapped onto the names Perspective's components actually read */
     --containerRoot: var(--n-bg);
