@@ -86,9 +86,63 @@ here is the DOM, where that buys nothing, and it costs a rewrite of all 54 compo
 The shape that avoids it: Svelte is the implementation, **the custom element is the contract**, and each host
 framework gets a thin adapter. A React consumer takes an adapter, not a second implementation.
 
+## Step 2 findings — how a Perspective component is actually registered
+
+Read out of `perspective-component-minimal` and `perspective-component` in `ignition-sdk-examples`
+(branch `ignition-8.3`), 2026-09-27. **reported** — read from IA's own examples, not yet run here.
+
+A component is four things, and only the last is ours to invent:
+
+- **A Java descriptor** in `common` scope — `ComponentDescriptorImpl.ComponentBuilder` with an id, a palette
+  category, a palette entry and a `JsonSchema`. Registered by both the gateway hook and the designer hook.
+- **A JSON Schema for the props**, as a resource file. This *is* the Designer's property editor: `type`,
+  `enum`, `format: "color"`, `visibleWhen`, `dynamicSuggestions` all render as editor affordances. So the
+  per-component cost really is a manifest entry, which is what the generic-adapter argument needed.
+- **A JS meta object** registered with `ComponentRegistry.register(...)`: `getComponentType()`,
+  `getViewComponent()`, `getDefaultSize()`, and `getPropsReducer(tree)` — which is the explicit answer to
+  "how does the property tree reach a component". You map it yourself, with `tree.readString(...)` and
+  friends.
+- **A React component** extending `Component` from `window.PerspectiveClient`. Both `PerspectiveClient` and
+  `React` are globals supplied by the gateway, so they are webpack `externals` — the same arrangement
+  `mantle/web-ui` already uses for `@inductiveautomation/*`.
+
+**The correction that matters.** This note previously said the adapter "has to set properties and attach
+listeners through a `ref`". That is wrong for Perspective, and would have produced a component that
+misbehaves in ways hard to attribute. IA's own comment is unambiguous: the topmost element must spread
+`this.props.emit({...})`, which supplies the element ref, event listeners, styles and classes — and
+
+> declaring a `ref` on the root element … will override the emitted ref and will not allow your component to
+> properly display any changes to the state of its qualities and may cause the component to throw an error.
+
+So the adapter reaches its DOM node through **`this.props.store.element`** after mount, never a `ref`. Two
+further constraints from the same source: DOM events go through `this.props.domEvents.addListener` rather
+than JSX handlers, and *"it is highly recommended that the root element does not change throughout the
+lifecycle of the component"* — which a fixed custom-element tag satisfies for free.
+
+That makes the generic adapter *more* plausible than when this was written, not less, because the awkward
+part is now a documented API rather than a fight with React 18's attribute stringifying:
+
+```js
+class NautilusElement extends Component {          // from window.PerspectiveClient
+    componentDidMount()  { this.sync(); }
+    componentDidUpdate() { this.sync(); }
+    sync() {
+        const el = this.props.store.element;        // NOT a ref
+        Object.assign(el, this.props.props);        // properties, not attributes
+    }
+    render() {
+        return React.createElement(TAG, this.props.emit());
+    }
+}
+```
+
+`Object.assign` onto the element is exactly what already drove `nautilus-tank` in step 1, so the two halves
+are known to fit. **open** — whether `emit()`'s styles and the custom element's own sizing agree, and
+whether a binding update re-renders without remounting.
+
 ## The part that needs design, not just work
 
-React 18 means the adapter has to set properties and attach listeners through a `ref`. The thing that makes
+React 18 means the adapter has to set properties through the element rather than as JSX attributes. The thing that makes
 that tractable is that **it can be one adapter rather than 54**, provided the elements keep to a convention:
 
 - every input is a **property** on the element, named as in the Svelte component
@@ -103,9 +157,11 @@ before it is discovered on the fortieth.**
 
 ## Open questions the spike must answer
 
-- How does Perspective's property tree (JSON) reach a component, and what happens to a nested object?
+- ~~How does Perspective's property tree (JSON) reach a component?~~ **Answered:** `getPropsReducer(tree)`
+  on the meta object, mapped explicitly. What happens to a nested object is still **open**.
+- Does the Designer palette need anything beyond registration? **Answered:** a Java `ComponentDescriptor`
+  plus a JSON Schema resource; the schema is the property editor.
 - Does a Perspective **binding** update the element without a remount?
-- Does the Designer palette need anything beyond registration — icon, category, schema?
 - Does Perspective's own CSS reset reach inside the shadow root, or do the components need their own?
   (Partly answered: custom *properties* cross the boundary — **verified**. A CSS *reset* is ordinary
   selector-based CSS and does not, which is the shadow DOM working as intended.)
