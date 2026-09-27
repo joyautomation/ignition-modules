@@ -71,6 +71,14 @@
     --neutral-90: #e6e6e3;
     --neutral-100: #fafaf9;
 
+    /* sequential ramp: Perspective's own curve at the accent hue (215deg) */
+    --seq-1: #008daa;
+    --seq-2: #18a5c0;
+    --seq-3: #6ec0d4;
+    --seq-4: #a0d5e2;
+    --seq-5: #cae7ee;
+    --seq-6: #ecf4f6;
+
     /* Nautilus tokens mapped onto the names Perspective's components actually read */
     --containerRoot: var(--n-bg);
     --container: var(--n-surface);
@@ -111,6 +119,16 @@
     --pipeStroke: var(--n-axis);
     --pipeSecondaryFill: var(--n-axis);
     --pipeSelectStroke: var(--n-accent);
+    --qual-1: var(--n-s1);
+    --qual-2: var(--n-s3);
+    --qual-3: var(--n-s2);
+    --qual-4: var(--n-s5);
+    --qual-5: var(--n-good);
+    --qual-6: var(--n-serious);
+    --qual-7: var(--n-accent);
+    --qual-8: var(--n-crit);
+    --qual-9: var(--n-warn);
+    --qual-10: var(--n-muted);
 
     /* shape and type */
     --borderRadius: var(--n-radius, 4px);

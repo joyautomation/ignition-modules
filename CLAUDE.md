@@ -80,6 +80,24 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   Note that `/data/api/v1/overview/banners` does **not** show it over basic auth and `/overview/problems`
   refuses basic auth outright, so a script cannot see this — it needs a logged-in browser session. Do not
   read a quiet API as "not implemented".
+- **A Perspective theme is served FLATTENED, and built once at startup.** The browser never fetches your
+  `index.css`; the gateway resolves the whole `@import` chain into one file at
+  `/data/perspective/themes/<name>.css` (the per-file form is project-scoped:
+  `/data/perspective/client/<project>/themes/<name>/variables.css`). Base values and your overrides both
+  appear in it, yours last, so later-wins at equal `:root` specificity is the whole mechanism. Because config
+  resources are read at startup, `docker cp`ing a changed theme does nothing until `docker compose restart
+  gateway` — the file on disk and the CSS being served disagree silently, with nothing in the log.
+- **Most of Perspective's 118 theme variables resolve through ones you already override.** `--checkbox--checked`,
+  `--radio--selected` and `--toggleSwitch--selected` are all `var(--callToAction)`; the progress bar is
+  `var(--infoSecondary)`; disabled states run through the neutral ramp. Mapping 51 of 118 leaves the controls
+  correct for free, so a raw "67 unmapped" count badly overstates the gap. The genuinely uncovered ones are the
+  literal-hex chart palettes (`--qual-*`, `--seq-*`, `--div-*`) and `--boxShadow*`.
+- **Perspective's ramps invert between light and dark, and `--seq-*` does it too.** `--seq-1` is always the step
+  nearest the background: the dark base lightens (L 59 -> 96), the light base darkens (L 67 -> 29). Same trap as
+  `--neutral-10`. Check against the shipped base before assuming a direction.
+- **A symbol's liquid fill is a component property, not a theme variable.** There is no `--vessel*`/`--tank*`/
+  `--liquid*` anywhere in the theme layer, so a Vessel's blue fill survives any theme; `--pipe*` and
+  `--symbolFill--*` are themeable and do follow. Don't chase a theme variable for it.
 - **`grep -r` skips binary files; `grep -ra` does not.** Searching extracted `.class` trees for a symbol
   without `-a` returns a confident, wrong "nothing references this". Always run a control search for a symbol
   known to be used before trusting a negative.

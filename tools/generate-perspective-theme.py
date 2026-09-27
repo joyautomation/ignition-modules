@@ -49,7 +49,29 @@ MAPPING = {
     "surface-2:sym": ["symbolFill--default", "pipePrimaryFill"],
     "axis":          ["symbolStroke--default", "pipeStroke", "pipeSecondaryFill"],
     "accent:pipe":   ["pipeSelectStroke"],
+
+    # ── charts: --qual-1..10, the CATEGORICAL palette (one colour per series, no order implied).
+    #    Perspective's own is ten unrelated hues; Nautilus has nine named ones, and they are the nine a
+    #    plant already reads as meaning something. Assigned so that ADJACENT slots differ in hue, because
+    #    a chart with three series uses 1, 2, 3 and those are the three that must not be confusable.
+    #    The tenth is --muted on purpose: a tenth series is an "other", and grey says so.
+    "s1:q1":         ["qual-1"],   # blue    — Nautilus's primary series
+    "s3:q2":         ["qual-2"],   # aqua
+    "s2:q3":         ["qual-3"],   # yellow
+    "s5:q4":         ["qual-4"],   # violet
+    "good:q5":       ["qual-5"],   # green
+    "serious:q6":    ["qual-6"],   # soft orange
+    "accent:q7":     ["qual-7"],   # cyan
+    "crit:q8":       ["qual-8"],   # red
+    "warn:q9":       ["qual-9"],   # amber
+    "muted:q10":     ["qual-10"],  # grey — the "other" slot, and the bronze this replaces
 }
+
+# --div-1..16 (diverging) and --boxShadow1..5 are deliberately NOT mapped. A diverging scale needs two
+# poles and a neutral midpoint, and Nautilus defines no such pair — inventing one here would be this
+# generator having a design opinion the palette does not. The shadows are neutral black rgba, which is
+# hue-agnostic and correct over any background, so retinting them to the house hue would only make them
+# worse. Both keep Perspective's values.
 
 # Nautilus has no 10–100 neutral ramp and Perspective leans on one hard (--neutral-90 is referenced 60 times
 # in the component CSS, --neutral-10 48 times). Inventing ten hex values by hand would drift from the palette
@@ -112,17 +134,24 @@ def house_hue(tokens: dict[str, str]) -> float:
         value = tokens.get(name, "")
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", value.strip()):
             continue
-        h = value.strip().lstrip("#")
-        r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
-        r, g, b = ((c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4) for c in (r, g, b))
-        l_ = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
-        m_ = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
-        s_ = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
-        A = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
-        B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
-        if math.hypot(A, B) > 0.002:
-            hues.append(math.degrees(math.atan2(B, A)) % 360)
+        _, chroma, h = hex_to_oklch(value)
+        if chroma > 0.002:
+            hues.append(h)
     return sum(hues) / len(hues) if hues else 0.0
+
+
+def hex_to_oklch(value: str) -> tuple[float, float, float]:
+    """#rrggbb to (lightness %, chroma, hue degrees). The inverse of oklch_to_hex."""
+    h = value.strip().lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    r, g, b = ((c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4) for c in (r, g, b))
+    l_ = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m_ = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s_ = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
+    A = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
+    B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    return L * 100, math.hypot(A, B), math.degrees(math.atan2(B, A)) % 360
 
 
 def neutrals(dark: bool, hue: float) -> list[str]:
@@ -138,6 +167,34 @@ def neutrals(dark: bool, hue: float) -> list[str]:
     """
     ramp = [oklch_to_hex(L, C, hue) for L, C in TAILWIND_GREY]
     return ramp if dark else list(reversed(ramp))
+
+
+# --seq-1..6 is Perspective's SEQUENTIAL palette: one hue, stepping away from the background, for a scale
+# where the order means something (a heatmap, a gradient fill). Perspective ships purple. The same trick
+# the neutrals use applies — borrow the lightness/chroma curve, which is well-tuned, and retint it to
+# Nautilus's accent — and the same inversion trap applies too, verified against the shipped bases:
+#
+#     dark/variables.css    --seq-1 #9656D6 (L 59) ... --seq-6 #F5F0FA (L 96)   lightens
+#     light/variables.css   --seq-1 #AE74E8 (L 67) ... --seq-6 #371C52 (L 29)   darkens
+#
+# Measured from those two ramps as (lightness %, chroma), in slot order 1..6.
+SEQ_CURVE = {
+    True:  [(58.6, 0.191), (66.7, 0.173), (76.2, 0.129), (84.0, 0.087), (90.9, 0.048), (96.2, 0.014)],
+    False: [(66.7, 0.173), (59.1, 0.187), (50.6, 0.194), (43.2, 0.176), (35.5, 0.137), (29.3, 0.096)],
+}
+
+
+def sequential(dark: bool, accent: str) -> list[str]:
+    """Perspective's --seq-1..6 at the accent's hue.
+
+    Chroma is scaled so the ramp's most saturated step lands on the accent's OWN chroma rather than the
+    purple's. Purple reaches 0.194 at L50; cyan cannot, and asking for it just clips to the edge of sRGB
+    and flattens the top of the ramp into one colour.
+    """
+    _, accent_chroma, hue = hex_to_oklch(accent)
+    curve = SEQ_CURVE[dark]
+    scale = accent_chroma / max(C for _, C in curve)
+    return [oklch_to_hex(L, C * scale, hue) for L, C in curve]
 
 
 def build(tokens: dict[str, str], dark: bool) -> str:
@@ -160,6 +217,13 @@ def build(tokens: dict[str, str], dark: bool) -> str:
     lines += ["", f"    /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue ({hue:.0f}deg) */"]
     for i, value in enumerate(neutrals(dark, hue)):
         lines.append(f"    --neutral-{(i + 1) * 10}: {value};")
+
+    accent = tokens.get("accent", "")
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", accent.strip()):
+        _, _, accent_hue = hex_to_oklch(accent)
+        lines += ["", f"    /* sequential ramp: Perspective's own curve at the accent hue ({accent_hue:.0f}deg) */"]
+        for i, value in enumerate(sequential(dark, accent)):
+            lines.append(f"    --seq-{i + 1}: {value};")
 
     lines += ["", "    /* Nautilus tokens mapped onto the names Perspective's components actually read */"]
     for source, targets in MAPPING.items():
