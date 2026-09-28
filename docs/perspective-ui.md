@@ -251,6 +251,43 @@ Three things to be honest about:
 This is **reported**, not verified: the two formats have been read side by side and a `view.json` has been
 hand-authored and rendered successfully (see above), but no converter has been written.
 
+## Sizing, settled properly — and what the Designer said about the component set
+
+**verified 2026-09-28 — the component fills whatever box Perspective gives it, keeping its aspect ratio.**
+The earlier "resolved" was half an answer: the *host* took the size Perspective assigned, but the drawing
+inside did not, because `Tank.svelte` puts a hard `width={width}` on its `<svg>`. The component ships a
+`viewBox` already, so the fix is to let CSS own the size and let `preserveAspectRatio` (default
+`xMidYMid meet`) do the rest:
+
+```css
+:host { display: block; width: 100%; height: 100%; }
+svg   { width: 100% !important; height: 100%; display: block; }
+```
+
+A CSS width beats a presentation attribute, so this needs no change to the component's markup. Measured
+across three instances on one view:
+
+| host | svg | ratio |
+|---|---|---|
+| 240x300 | 240x300 | 0.800 |
+| 400x500 | 400x500 | 0.800 |
+| 400x200 | 400x200 | 2.000 — the drawing letterboxes rather than stretching |
+
+For the real module this belongs in the components themselves (`width` becoming an optional override rather
+than the driver), which is a change to `nautilus/hmi` and so is proposed, not taken. The `width` prop should
+probably stop being a Perspective-facing prop at all: Perspective already has a size for the component, and
+two sources of size is one too many.
+
+**The component set needs designing, not porting.** First reaction to dragging the Tank out of the Designer
+palette: *most tanks do not have a heater*. That is a product finding, not a bug. The Nautilus HMI's 54
+components were written for screens Nautilus itself renders, where a specific component for a specific rig is
+cheap. A Perspective *palette* is a different contract — the component is placed by someone else, for a
+vessel we have never seen, and a heater coil that cannot be turned off is a component that only fits one
+plant. So the port is not 1:1: the palette wants generic primitives with options (`heater: none | coil |
+jacket`, `scale: none | left | right`), and the specific ones stay in Nautilus where they belong. **open** —
+which components are palette-worthy, and what each one's options are. This is the largest remaining piece of
+design and it should happen before the other 53 are built, not after.
+
 ## The part that needs design, not just work
 
 React 18 means the adapter has to set properties through the element rather than as JSX attributes. The thing that makes

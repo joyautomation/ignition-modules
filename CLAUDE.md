@@ -112,6 +112,16 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   while `data/modules.json` — which *is* in the volume — still points at it, and the gateway logs
   *"The file for module 'com.joyautomation.mantle' is missing and will not be loaded"*. Re-run
   `scripts/install-module.sh mantle`. Symptom: every module route 404s.
+- **Module trust survives replacing the file.** Once a UI-installed module's certificate has been accepted,
+  the `.modl` can be overwritten in place and the gateway restarted without going back to quarantine
+  (verified 2026-09-28: 0 quarantine lines, resources served immediately). The UI puts it in
+  `data/var/ignition/modl/<Name>.modl` — inside the data volume, not `user-lib/modules` — so it survives a
+  container recreate too. That makes the iterate loop `docker compose cp` + `restart`, with no browser.
+- **`./gradlew build` will happily ship a stale resource; use `clean build`.** After replacing a file under
+  `gateway/src/main/resources/mounted/`, the module task reported `UP-TO-DATE` and rebuilt a `.modl` whose
+  jar still held the *previous* file — same byte count, old timestamp, no warning. Same staging-directory
+  cause as the excludes trap below. Verify by unzipping the `.modl` and listing the jar; do not trust the
+  `.modl`'s own timestamp, which updates while its contents do not.
 - **A module installed through the web UI is QUARANTINED pending certificate acceptance**, and
   `-Dignition.allowunsignedmodules=true` does not cover it. The log line is
   *"Moving module <name> to quarantine because certificate not yet accepted"*, and the only symptom
