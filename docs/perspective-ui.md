@@ -140,6 +140,59 @@ class NautilusElement extends Component {          // from window.PerspectiveCli
 are known to fit. **open** — whether `emit()`'s styles and the custom element's own sizing agree, and
 whether a binding update re-renders without remounting.
 
+## Step 3-4 results — measured in a running gateway, 2026-09-28
+
+**verified — bindings do NOT remount the element. The kill criterion is cleared.** A Perspective expression
+binding at 2 Hz (`50 + 40 * sin(getMillis(now(500)) / 500.0)`) driving `levelPct`, measured off the adapter's
+own counters after ~65 seconds:
+
+```
+mounts: 1    updates: 129    distinctNodes: 1    mountSeq: "1"    stillSameNode: true
+```
+
+129 binding updates, one mount, one DOM node, and the node the adapter holds at the end is the node it was
+given at the start. React reconciles the constant element type in place. This was the criterion most likely
+to force a rethink and it is comfortably clear.
+
+**verified — the generic adapter stayed generic.** It is written as a factory over
+`(tag, componentType, propSpec)` with the component list as a manifest, never a `TankComponent`. That matters
+because a bespoke wrapper would have worked here and told us nothing.
+
+**verified — the theme pack composes with the component module, inside real Perspective.** Read from inside
+the custom element's shadow root while the session ran under our generated `nautilus-dark.css`:
+`--n-accent` resolves to `#06b6d4`. Step 1 measured this in a plain page; this is the same result in the
+product, which is what it needed.
+
+**verified — the custom element upgrade race did not bite.** `BROWSER_RESOURCES` is a Java `Set.of(...)`
+with unspecified iteration order, so the adapter can load before the element bundle defines the tag, and
+properties set on a un-upgraded element would be shadowed by the class accessors. Measured `upgraded: true`
+with the live value flowing, so Svelte 5's custom elements survive it. Worth a `customElements.whenDefined`
+guard anyway, because "did not bite today" and "cannot bite" are different claims and the ordering is
+genuinely unspecified.
+
+### Two real problems, neither fatal
+
+**The component library's token names and the theme pack's do not match.** Inside the shadow root, `--s1`
+resolves to **nothing**. The Nautilus HMI's components default to `fill='var(--s1)'`, but the generated
+Perspective theme publishes the tokens as `--n-s1`, `--n-accent` and so on — the `--n-` prefix exists so the
+mapping onto Perspective's own variable names reads as a mapping. So a component's *internal defaults* go
+unstyled under the Perspective theme even though the theme is present and reaching the shadow root.
+
+Three ways out, and it is a decision, not a bug fix:
+1. the theme publishes both spellings (cheap, and a component needs no knowledge of Perspective);
+2. the theme publishes the bare names Nautilus already uses, and drops the prefix;
+3. the components move to `--n-` names, which changes the HMI.
+
+(1) is the obvious first move, and the generator can emit it for free. It is recorded here rather than done
+because it touches what the theme pack publishes, which is a product surface.
+
+**The host element stretches.** Measured `hostBox: 220x1468` against `svgBox: 220x260` — the custom element
+host is eleven hundred pixels taller than its own content, because `emit()` sets no height and the flex
+container stretches it. The component draws correctly inside that box, so it looks like a layout bug rather
+than a rendering one, but it makes the component unusable in a flex container without intervention. **open**
+— whether the adapter should constrain the host, the component should declare its own intrinsic size, or the
+props should carry a height. This is the next thing to settle.
+
 ## The part that needs design, not just work
 
 React 18 means the adapter has to set properties through the element rather than as JSX attributes. The thing that makes
@@ -161,13 +214,14 @@ before it is discovered on the fortieth.**
   on the meta object, mapped explicitly. What happens to a nested object is still **open**.
 - Does the Designer palette need anything beyond registration? **Answered:** a Java `ComponentDescriptor`
   plus a JSON Schema resource; the schema is the property editor.
-- Does a Perspective **binding** update the element without a remount?
+- ~~Does a Perspective **binding** update the element without a remount?~~ **Answered: yes.** 129 updates, 1 mount.
 - Does Perspective's own CSS reset reach inside the shadow root, or do the components need their own?
   (Partly answered: custom *properties* cross the boundary — **verified**. A CSS *reset* is ordinary
   selector-based CSS and does not, which is the shadow DOM working as intended.)
 - Do focus, keyboard and screen readers behave across the shadow boundary? **open**, and the most likely
   source of unpleasant surprises for `AckButton`, `ConfirmDialog` and `AlarmTable`.
-- Bundle shape: one bundle of 54 components, or lazy per component?
+- Bundle shape: one bundle of 54 components, or lazy per component? **open.** Two components came to 59 kB.
+- Does the host element size itself sensibly in a container? **open, and currently no** — see above.
 
 ## Sequencing
 

@@ -121,6 +121,19 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   to be trusted in Config → Modules. There is a modules REST API (the install logs
   `route-group=api, route-path=/v1/modules/install`) but `/data/api/v1/modules{,/list,/quarantine}` all
   answer *"No route"* under both basic auth and an API token, so the acceptance is a browser action.
+- **A Perspective view and its page mapping are project resources, read at startup.** A view is
+  `data/projects/<project>/com.inductiveautomation.perspective/views/<Name>/{view.json,resource.json}`, and a
+  URL only reaches it through `page-config/config.json` (`{"pages": {"/spike": {"viewPath": "NautilusSpike"}}}`)
+  — a view with no page entry renders *"View Not Found"*, which reads like a missing view and is not. Both
+  need a `docker compose restart gateway` to be seen, exactly like a theme. A hand-written `resource.json` can
+  leave `attributes` empty; the `lastModificationSignature` the Designer writes is not required.
+- **Perspective's own components crash on a missing `style` prop.** `ia.symbol.vessel` in a hand-written
+  view.json throws `Cannot read properties of undefined (reading 'classes')` from `parseStyle` inside its
+  `getPropsReducer`, and Perspective's error boundary then replaces the *whole view* with "Component Error" —
+  so one under-specified stock component hides every other component on the page. Adding
+  `"style": {"classes": ""}` was not enough for the Vessel specifically; `ia.display.label` is a safe control
+  to reach for instead. Read the console: the stack names the component, which is the only thing that
+  distinguishes "my component is broken" from "the thing next to it is".
 - **A fresh data volume invalidates the API token in `.env.trial`.** `dev-up.sh --fresh` therefore breaks the
   trial-reset cron until a new token is made by hand. Anything scripted should go through the integration-api
   WebDev endpoint (basic auth) or `docker cp`, never an API token — CI can never have one.
