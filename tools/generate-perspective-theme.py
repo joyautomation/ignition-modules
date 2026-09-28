@@ -213,6 +213,19 @@ def build(tokens: dict[str, str], dark: bool) -> str:
     for name, value in sorted(tokens.items()):
         lines.append(f"    --n-{name}: {value};")
 
+    # The SAME tokens under their bare Nautilus names. The --n- prefix keeps the mapping below readable,
+    # but the HMI's own components ask for var(--s1), var(--accent) and so on — so a component dropped into
+    # Perspective found those undefined and fell back to its hard-coded defaults, with nothing logged and
+    # nothing on screen to say why (measured 2026-09-28: --n-accent resolved inside the shadow root, --s1
+    # did not). Publishing both spellings costs nothing and means a component needs no knowledge of
+    # Perspective at all.
+    #
+    # The only name that collides with Perspective's own vocabulary is --border, and that one is already
+    # deliberately overridden in the mapping below, to the same value.
+    lines += ["", "    /* the same tokens under the bare names the Nautilus components actually ask for */"]
+    for name, value in sorted(tokens.items()):
+        lines.append(f"    --{name}: var(--n-{name});")
+
     hue = house_hue(tokens)
     lines += ["", f"    /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue ({hue:.0f}deg) */"]
     for i, value in enumerate(neutrals(dark, hue)):

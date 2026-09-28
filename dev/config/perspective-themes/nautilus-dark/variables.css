@@ -59,6 +59,58 @@
     --n-weight-eyebrow: 700;
     --n-weight-numeric: 650;
 
+    /* the same tokens under the bare names the Nautilus components actually ask for */
+    --accent: var(--n-accent);
+    --axis: var(--n-axis);
+    --bg: var(--n-bg);
+    --border: var(--n-border);
+    --crit: var(--n-crit);
+    --elevation-float: var(--n-elevation-float);
+    --font: var(--n-font);
+    --font-2xs: var(--n-font-2xs);
+    --font-display: var(--n-font-display);
+    --font-lg: var(--n-font-lg);
+    --font-md: var(--n-font-md);
+    --font-sm: var(--n-font-sm);
+    --font-xs: var(--n-font-xs);
+    --good: var(--n-good);
+    --grid: var(--n-grid);
+    --hover: var(--n-hover);
+    --ink: var(--n-ink);
+    --ink-2: var(--n-ink-2);
+    --mono: var(--n-mono);
+    --muted: var(--n-muted);
+    --overlay: var(--n-overlay);
+    --primary-bg: var(--n-primary-bg);
+    --primary-border: var(--n-primary-border);
+    --primary-hover: var(--n-primary-hover);
+    --radius: var(--n-radius);
+    --radius-pill: var(--n-radius-pill);
+    --radius-sm: var(--n-radius-sm);
+    --s1: var(--n-s1);
+    --s2: var(--n-s2);
+    --s3: var(--n-s3);
+    --s5: var(--n-s5);
+    --serious: var(--n-serious);
+    --space-1: var(--n-space-1);
+    --space-2: var(--n-space-2);
+    --space-3: var(--n-space-3);
+    --space-4: var(--n-space-4);
+    --space-6: var(--n-space-6);
+    --space-8: var(--n-space-8);
+    --space-unit: var(--n-space-unit);
+    --surface: var(--n-surface);
+    --surface-2: var(--n-surface-2);
+    --tap: var(--n-tap);
+    --tint-strength: var(--n-tint-strength);
+    --transition: var(--n-transition);
+    --transition-slow: var(--n-transition-slow);
+    --warn: var(--n-warn);
+    --wash-strength: var(--n-wash-strength);
+    --weight-control: var(--n-weight-control);
+    --weight-eyebrow: var(--n-weight-eyebrow);
+    --weight-numeric: var(--n-weight-numeric);
+
     /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue (103deg) */
     --neutral-10: #0b0b09;
     --neutral-20: #1a1a17;

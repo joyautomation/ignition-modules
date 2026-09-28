@@ -178,20 +178,21 @@ Perspective theme publishes the tokens as `--n-s1`, `--n-accent` and so on — t
 mapping onto Perspective's own variable names reads as a mapping. So a component's *internal defaults* go
 unstyled under the Perspective theme even though the theme is present and reaching the shadow root.
 
-Three ways out, and it is a decision, not a bug fix:
-1. the theme publishes both spellings (cheap, and a component needs no knowledge of Perspective);
-2. the theme publishes the bare names Nautilus already uses, and drops the prefix;
-3. the components move to `--n-` names, which changes the HMI.
+**Resolved 2026-09-28: the theme publishes both spellings.** The generator emits every token twice, once as
+`--n-<name>` and once as `--<name>: var(--n-<name>)`, so a Nautilus component needs no knowledge of
+Perspective whatsoever. Verified inside the shadow root in a running session: `--s1` now reads `#3987e5` and
+`--accent` `#06b6d4`. The only bare name that collides with Perspective's own vocabulary is `--border`, which
+the mapping already overrides to the same value.
 
-(1) is the obvious first move, and the generator can emit it for free. It is recorded here rather than done
-because it touches what the theme pack publishes, which is a product surface.
-
-**The host element stretches.** Measured `hostBox: 220x1468` against `svgBox: 220x260` — the custom element
-host is eleven hundred pixels taller than its own content, because `emit()` sets no height and the flex
-container stretches it. The component draws correctly inside that box, so it looks like a layout bug rather
-than a rendering one, but it makes the component unusable in a flex container without intervention. **open**
-— whether the adapter should constrain the host, the component should declare its own intrinsic size, or the
-props should carry a height. This is the next thing to settle.
+**The host element stretches — in a flex container, and only there.** First measured as
+`hostBox: 220x1468` against `svgBox: 220x260`, which looked like it needed the adapter, the component or the
+props to take ownership of sizing. It did not. That test used `ia.container.flex`, whose default
+`align-items: stretch` grows the host; an HMI screen uses `ia.container.coord`, where Perspective assigns an
+explicit size. Re-measured in a coordinate container with `position: {width: 240, height: 300}`:
+`hostBox: 240x300`, exactly as asked. **Resolved** — no adapter change needed, and the lesson is that the
+container type was a variable in the experiment that should have been held at the realistic value first.
+A flex container will still stretch it, so `align-self` remains worth documenting for anyone who puts one
+there deliberately.
 
 ## The part that needs design, not just work
 
@@ -221,7 +222,7 @@ before it is discovered on the fortieth.**
 - Do focus, keyboard and screen readers behave across the shadow boundary? **open**, and the most likely
   source of unpleasant surprises for `AckButton`, `ConfirmDialog` and `AlarmTable`.
 - Bundle shape: one bundle of 54 components, or lazy per component? **open.** Two components came to 59 kB.
-- Does the host element size itself sensibly in a container? **open, and currently no** — see above.
+- ~~Does the host element size itself sensibly in a container?~~ **Answered: yes in a coordinate container** (the realistic case); a flex container stretches it.
 
 ## Sequencing
 
