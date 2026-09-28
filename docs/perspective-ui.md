@@ -11,7 +11,21 @@ first-hand), **open** (nobody knows yet). Written 2026-09-25.
 **Svelte 5 stays the single implementation. Custom elements are the public API. One generic React adapter
 hosts them in Perspective.**
 
-Two modules, shipped separately:
+**Superseded 2026-09-28 — one module, not two.** The theme is not worth a standalone package: the components
+need it to look right (their styles live in the shadow root, but the token *values* come from the page), so
+shipping them apart creates a dependency to explain for no benefit. One module, `Nautilus HMI`, carrying the
+components, the adapter and the theme. `Mantle` stays separate, because it genuinely is a different product
+and neither needs the other.
+
+The name is `Nautilus HMI`, not `Mantle HMI`: the components do not depend on Mantle and work against any tag
+source, so naming them after the MQTT module would imply a coupling that does not exist — and the lineage
+that matters is the component library they come from. "for Ignition" goes in the description, per the
+Showcase rule in `releasing.md`.
+
+**open** — whether a module can install a Perspective theme config resource at startup, or whether the theme
+has to be delivered some other way. Not yet checked; do not assume either answer.
+
+The original two-module split, kept for the reasoning:
 
 | | |
 |---|---|
@@ -193,6 +207,49 @@ explicit size. Re-measured in a coordinate container with `position: {width: 240
 container type was a variable in the experiment that should have been held at the realistic value first.
 A flex container will still stretch it, so `align-self` remains worth documenting for anyone who puts one
 there deliberately.
+
+## The bigger prize: MimicDoc compiles to view.json
+
+Noticed 2026-09-28 while answering "could I build an HMI in SvelteKit and convert it?". The answer is that
+the conversion does not need SvelteKit at all.
+
+`Mimic.svelte` does not render hand-written markup. It renders a **`MimicDoc`** (`hmi/src/lib/mimic.ts`) — a
+declarative document:
+
+```ts
+{ canvas: {width, height},
+  equipment: [{ id, component: "Tank", x, y, width, props, bind: { levelPct: "Plant/L1/Level" } }],
+  pipes: [...], labels: [{ text, x, y, bind, unit, decimals }] }
+```
+
+A Perspective `view.json` is the same kind of document, and the mapping is close to one-to-one:
+
+| MimicDoc | view.json |
+|---|---|
+| `canvas` | `ia.container.coord` root |
+| `equipment[].component` | `type` (registry name → component id) |
+| `equipment[].x/y/width` | `position` |
+| `equipment[].props` | `props` |
+| `equipment[].bind` | `propConfig["props.<name>"].binding`, type `tag` |
+| `labels[]` | `ia.display.label` with a tag binding |
+
+So the module can ship a **`MimicDoc` → `view.json` converter**, and what comes out is an ordinary Perspective
+view — ordinary components, ordinary tag bindings — which a plant engineer edits in the Designer like any
+other. That is the whole point: a generated screen that stops being generated the moment it lands.
+
+Three things to be honest about:
+
+1. **One-way, once.** Generate the starting view, then Perspective owns it. Round-tripping means two sources
+   of truth that will diverge; this is scaffolding, not sync.
+2. **Pipes are the one hard piece.** `Pipe` is one of the five `<g>` glyphs that cannot be a custom element.
+   The shape that works is a single `nautilus-pipes` element taking the whole `pipes[]` array as a prop and
+   drawing the underlay — which is the "wrap the container that owns the `<svg>`" answer from step 1, now
+   with something concrete to build.
+3. **Only MimicDocs convert.** Arbitrary SvelteKit — hand-written markup, `{#each}`, event handlers — does
+   not, and trying would rebuild a worse Perspective. The restriction is what makes it work.
+
+This is **reported**, not verified: the two formats have been read side by side and a `view.json` has been
+hand-authored and rendered successfully (see above), but no converter has been written.
 
 ## The part that needs design, not just work
 
