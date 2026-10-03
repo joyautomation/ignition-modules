@@ -248,8 +248,32 @@ Three things to be honest about:
 3. **Only MimicDocs convert.** Arbitrary SvelteKit — hand-written markup, `{#each}`, event handlers — does
    not, and trying would rebuild a worse Perspective. The restriction is what makes it work.
 
-This is **reported**, not verified: the two formats have been read side by side and a `view.json` has been
-hand-authored and rendered successfully (see above), but no converter has been written.
+**verified 2026-10-02 — the converter exists and the whole chain runs.** `tools/mimic-to-view.py` compiles a
+MimicDoc to a `view.json`. Run against the real `examples/hmi-demo/src/routes/heated-tank.mimic.json`:
+
+- geometry carried over exactly — `T101` at its doc position, 190 wide, **height 225 derived** from the
+  component's own `viewBox` ratio (190 x 260/220), read from the source so it cannot drift;
+- bindings became Perspective tag bindings against Mantle's auto-created Sparkplug tags;
+- with an edge node publishing, `levelPct` moved from 10.2029 to 10.8445 over five seconds, and the labels
+  showed `10.2 %`, `12.0 degC`, `1200 kW`.
+
+MQTT -> Sparkplug -> Mantle -> auto-created tag -> Perspective binding -> Svelte component, from a screen
+authored once for Nautilus. The output is an ordinary view a plant engineer edits in the Designer.
+
+**A MimicDoc gives width but not height**, because its components choose their own; a Perspective coordinate
+container needs both. The converter derives it from the `viewBox`, which is why the aspect-ratio work above
+was load-bearing rather than cosmetic.
+
+**Tag names need mapping, and this is not optional.** A MimicDoc names tags the way the screen's author
+thinks of them (`LevelPct`); a plant names them the way its edge published them
+(`HeavyPlant/HeavyEdge/PLC1/Tank/Level`). Those are never the same string, so `--map`/`--map-file` is the
+difference between a converter that works on one gateway and one that works anywhere. Unmapped names are
+reported rather than silently emitted, because a binding to a tag that does not exist reads back
+**`Good` with a null value** (see `CLAUDE.md`) and the component simply errors with nothing explaining why.
+
+Still not converted: **pipes** (one `nautilus-pipes` element owning the underlay, as above) and any component
+a MimicDoc took from its Svelte `registry` rather than the built-ins — `heated-tank` uses `Supply` and
+`ToProcess`, which exist only in that demo. The converter names them and skips them.
 
 ## Sizing, settled properly — and what the Designer said about the component set
 
