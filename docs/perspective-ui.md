@@ -22,8 +22,13 @@ source, so naming them after the MQTT module would imply a coupling that does no
 that matters is the component library they come from. "for Ignition" goes in the description, per the
 Showcase rule in `releasing.md`.
 
-**open** — whether a module can install a Perspective theme config resource at startup, or whether the theme
-has to be delivered some other way. Not yet checked; do not assume either answer.
+**verified 2026-10-02 — a module can install the theme.** Perspective's themes are an ordinary Ignition
+config resource type: `ThemeManagerImpl extends NamedResourceHandler<ThemeConfig>` with a `RESOURCE_TYPE`,
+stored under `config/resources/core/com.inductiveautomation.perspective/themes/<name>/`. Perspective ships
+its own the same way — `copyReservedThemesToCore()` pushes them at startup, and `dark-cool`'s `resource.json`
+records `"actor": "theme-manager"`, so they are written programmatically rather than shipped on disk. The
+module does what Perspective does. (`ThemeManager` in the public gateway API is read-only — `getTheme`,
+`getThemesList` — so the write path is the resource system, not that interface.)
 
 The original two-module split, kept for the reasoning:
 
@@ -312,6 +317,33 @@ jacket`, `scale: none | left | right`), and the specific ones stay in Nautilus w
 which components are palette-worthy, and what each one's options are. This is the largest remaining piece of
 design and it should happen before the other 53 are built, not after.
 
+## The last kill criterion: accessibility across the shadow boundary
+
+**verified 2026-10-02 — cleared.** Tested with `AckButton` and `ConfirmDialog`, the two that matter, because
+an acknowledge button that cannot be reached by keyboard is not shippable.
+
+Tab order survives the boundary. One Tab from a plain button before it lands on `nautilus-ackbutton` with the
+inner `<button>` focused and a visible focus ring. `document.activeElement` reports the *host* — that is
+shadow-DOM retargeting working as specified, not a fault; `shadowRoot.activeElement` gives the real control.
+The host needs no `tabindex`: focus reaches the inner button on its own, and the accessible name ("Ack") comes
+through.
+
+Enter on the focused button opened the confirm dialog, which is the part that could have gone badly. The
+worry was that a modal rendered inside a shadow root would be trapped in its host's box. It is not, because
+`ConfirmDialog` uses a **native `<dialog>`**, and `showModal()` puts it in the browser's *top layer* — which
+escapes shadow DOM, ancestor clipping and stacking contexts alike. Measured: the dialog is 362x297 and
+centred while its host element measures `1638x0`. Focus moved into the dialog by itself.
+
+That makes the native `<dialog>` a load-bearing implementation choice rather than a detail, and worth stating
+as a constraint for the component set: **a component that overlays the page must use `<dialog>`, not a
+positioned div**, or it will be clipped to its host once it is a custom element.
+
+One packaging consequence. `AckButton` calls `confirm()` from a shared module store that needs one
+`<ConfirmDialog/>` mounted on the page. As a custom element that becomes a *sibling element* taking no space
+(`1638x0`). Requiring a plant engineer to drag an invisible component onto every view that has an Ack button
+is a bad experience and will be forgotten exactly once, on the screen that matters. The module should mount
+one per page itself rather than expose it on the palette. **open** — where that mount hangs.
+
 ## The part that needs design, not just work
 
 React 18 means the adapter has to set properties through the element rather than as JSX attributes. The thing that makes
@@ -337,7 +369,8 @@ before it is discovered on the fortieth.**
 - Does Perspective's own CSS reset reach inside the shadow root, or do the components need their own?
   (Partly answered: custom *properties* cross the boundary — **verified**. A CSS *reset* is ordinary
   selector-based CSS and does not, which is the shadow DOM working as intended.)
-- Do focus, keyboard and screen readers behave across the shadow boundary? **open**, and the most likely
+- ~~Do focus, keyboard and screen readers behave across the shadow boundary?~~ **Answered: yes — see below.**
+- (was) Do focus, keyboard and screen readers behave across the shadow boundary? the most likely
   source of unpleasant surprises for `AckButton`, `ConfirmDialog` and `AlarmTable`.
 - ~~Bundle shape: one bundle, or lazy per component?~~ **Answered: one bundle.** All 49 convertible
   components (the 54 less the five SVG fragments) compiled as custom elements with **zero failures** —
