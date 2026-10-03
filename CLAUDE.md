@@ -98,6 +98,11 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
 - **A symbol's liquid fill is a component property, not a theme variable.** There is no `--vessel*`/`--tank*`/
   `--liquid*` anywhere in the theme layer, so a Vessel's blue fill survives any theme; `--pipe*` and
   `--symbolFill--*` are themeable and do follow. Don't chase a theme variable for it.
+- **`pkill -f` / `pgrep -f` match the shell running them.** The pattern appears in that shell's own command
+  line, so `pkill -f "http.server 8901"` kills the shell mid-script and the rest of the command — the edit,
+  the commit — silently never runs, surfacing only as exit code 144. Bitten twice here. Match on something
+  the kill command itself cannot contain (a pidfile, `lsof -ti:PORT | xargs -r kill`), or just let a
+  backgrounded test server expire with the session.
 - **`grep -r` skips binary files; `grep -ra` does not.** Searching extracted `.class` trees for a symbol
   without `-a` returns a confident, wrong "nothing references this". Always run a control search for a symbol
   known to be used before trusting a negative.
