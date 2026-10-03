@@ -339,7 +339,11 @@ before it is discovered on the fortieth.**
   selector-based CSS and does not, which is the shadow DOM working as intended.)
 - Do focus, keyboard and screen readers behave across the shadow boundary? **open**, and the most likely
   source of unpleasant surprises for `AckButton`, `ConfirmDialog` and `AlarmTable`.
-- Bundle shape: one bundle of 54 components, or lazy per component? **open.** Two components came to 59 kB.
+- ~~Bundle shape: one bundle, or lazy per component?~~ **Answered: one bundle.** All 49 convertible
+  components (the 54 less the five SVG fragments) compiled as custom elements with **zero failures** —
+  398 kB raw, **118.6 kB gzipped**. Perspective's own component *stylesheet* is 156 kB, so one bundle is not
+  the heavy option, and lazy-loading would be complexity bought for nothing. The clean compile of all 49 is
+  also the best evidence so far that the remaining port is mechanical.
 - ~~Does the host element size itself sensibly in a container?~~ **Answered: yes in a coordinate container** (the realistic case); a flex container stretches it.
 
 ## Sequencing
