@@ -47,7 +47,13 @@ MAPPING = {
     #    the same process-state palette as the Nautilus ones, so a screen mixing both is not two languages.
     "muted:stopped": ["symbolFill--stopped", "symbolStroke--stopped", "indicatorOff"],
     "surface-2:sym": ["symbolFill--default", "pipePrimaryFill"],
-    "axis":          ["symbolStroke--default", "pipeStroke", "pipeSecondaryFill"],
+    # NOT --axis. Measured 2026-10-10: --n-axis #383835 is 1.65:1 against --bg and 1.34:1 against
+    # --surface-2, where WCAG 1.4.11 wants 3:1 for a graphical object. It is a correct CHART AXIS -- a
+    # hairline that should recede behind the data -- and a bad EQUIPMENT OUTLINE, which has to be findable
+    # on a plant screen at a glance. Same token, two jobs, one of them failing. --n-stroke below is derived
+    # for the second job; Nautilus's own components should grow the same token so a pipe reads the same in
+    # both products.
+    "stroke":        ["symbolStroke--default", "pipeStroke", "pipeSecondaryFill"],
     "accent:pipe":   ["pipeSelectStroke"],
 
     # ── charts: --qual-1..10, the CATEGORICAL palette (one colour per series, no order implied).
@@ -222,9 +228,17 @@ def build(tokens: dict[str, str], dark: bool) -> str:
     #
     # The only name that collides with Perspective's own vocabulary is --border, and that one is already
     # deliberately overridden in the mapping below, to the same value.
+    # A stroke colour Nautilus does not yet define. Derived at the house hue so it belongs to the palette,
+    # at the lightness that first clears 3:1 against BOTH the page background and a panel surface -- a pipe
+    # can sit on either, so passing against only one is not passing.
+    lines += ["", f"    /* equipment outlines: {'lighter' if dark else 'darker'} than --axis, to clear "
+                  f"WCAG 1.4.11's 3:1 for graphical objects */",
+              f"    --n-stroke: {oklch_to_hex(55.0 if dark else 48.0, 0.008, house_hue(tokens))};"]
+
     lines += ["", "    /* the same tokens under the bare names the Nautilus components actually ask for */"]
     for name, value in sorted(tokens.items()):
         lines.append(f"    --{name}: var(--n-{name});")
+    lines.append("    --stroke: var(--n-stroke);")
 
     hue = house_hue(tokens)
     lines += ["", f"    /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue ({hue:.0f}deg) */"]
@@ -239,9 +253,12 @@ def build(tokens: dict[str, str], dark: bool) -> str:
             lines.append(f"    --seq-{i + 1}: {value};")
 
     lines += ["", "    /* Nautilus tokens mapped onto the names Perspective's components actually read */"]
+    # Tokens this generator derives rather than reads from theme.css. They are emitted above and are
+    # legitimate mapping sources, so the "no such token" guard must not reject them.
+    derived = {"stroke"}
     for source, targets in MAPPING.items():
         token = source.split(":")[0]
-        if token not in tokens:
+        if token not in tokens and token not in derived:
             print(f"  warning: no --{token} in the theme; skipping {targets}", file=sys.stderr)
             continue
         for target in targets:

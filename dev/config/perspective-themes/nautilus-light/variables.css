@@ -59,6 +59,9 @@
     --n-weight-eyebrow: 700;
     --n-weight-numeric: 650;
 
+    /* equipment outlines: darker than --axis, to clear WCAG 1.4.11's 3:1 for graphical objects */
+    --n-stroke: #5f5e59;
+
     /* the same tokens under the bare names the Nautilus components actually ask for */
     --accent: var(--n-accent);
     --axis: var(--n-axis);
@@ -110,6 +113,7 @@
     --weight-control: var(--n-weight-control);
     --weight-eyebrow: var(--n-weight-eyebrow);
     --weight-numeric: var(--n-weight-numeric);
+    --stroke: var(--n-stroke);
 
     /* neutral ramp: Tailwind v4's stone curve, retinted to the house hue (96deg) */
     --neutral-10: #fafaf9;
@@ -167,9 +171,9 @@
     --indicatorOff: var(--n-muted);
     --symbolFill--default: var(--n-surface-2);
     --pipePrimaryFill: var(--n-surface-2);
-    --symbolStroke--default: var(--n-axis);
-    --pipeStroke: var(--n-axis);
-    --pipeSecondaryFill: var(--n-axis);
+    --symbolStroke--default: var(--n-stroke);
+    --pipeStroke: var(--n-stroke);
+    --pipeSecondaryFill: var(--n-stroke);
     --pipeSelectStroke: var(--n-accent);
     --qual-1: var(--n-s1);
     --qual-2: var(--n-s3);

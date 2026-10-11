@@ -95,6 +95,14 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
 - **Perspective's ramps invert between light and dark, and `--seq-*` does it too.** `--seq-1` is always the step
   nearest the background: the dark base lightens (L 59 -> 96), the light base darkens (L 67 -> 29). Same trap as
   `--neutral-10`. Check against the shipped base before assuming a direction.
+- **A chart axis and an equipment outline are not the same colour, and `--n-axis` was doing both.**
+  Measured: `#383835` is **1.65:1** against `--bg` and 1.34:1 against `--surface-2`, where WCAG 1.4.11 asks
+  **3:1** for a graphical object — correct for a hairline that should recede behind data, wrong for a pipe
+  someone has to find on a plant screen. The generator now derives `--n-stroke` at the house hue, at the
+  lightness that first clears 3:1 against *both* the page background and a panel surface (a pipe can sit on
+  either, so passing against one is not passing): `#72726d` dark at 4.02/3.26, `#5f5e59` light at 6.22/5.65.
+  The wider point: **"does this look too dark" is usually measurable, not a matter of taste** — contrast
+  ratio is arithmetic on two hex values and needs no screenshot and no human.
 - **A symbol's liquid fill is a component property, not a theme variable.** There is no `--vessel*`/`--tank*`/
   `--liquid*` anywhere in the theme layer, so a Vessel's blue fill survives any theme; `--pipe*` and
   `--symbolFill--*` are themeable and do follow. Don't chase a theme variable for it.
