@@ -19,6 +19,10 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   Run it after any change to `HostState`, `ManagedTagSink` or `BrokerConnection`: it has caught bugs the unit
   tests structurally cannot.
 - `cd mantle && ./gradlew test`; `./gradlew :gateway:simulate --args="tcp://localhost:1883 Plant Edge1 [seconds]"`.
+- `scripts/designer/designer.sh {status,up,shot,do}`: **the Designer, drivable and readable without asking the
+  user for a screenshot.** Opens it in the `im12-designer` container against the dev gateway, clicks in it, and
+  brings back PNGs — `shot --crop X,Y,W,H` is legible enough to read tag names. Coordinates are client-relative.
+  Read `scripts/designer/README.md` before using it, and read every frame: a blind script reports success.
 - Gateway logs: `docker compose logs gateway | grep -E 'Mantle|M\.Host|M\.Tags|M\.C\.'`.
 
 ## Things that cost time to learn
@@ -106,6 +110,16 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
 - **A symbol's liquid fill is a component property, not a theme variable.** There is no `--vessel*`/`--tank*`/
   `--liquid*` anywhere in the theme layer, so a Vessel's blue fill survives any theme; `--pipe*` and
   `--symbolFill--*` are themeable and do follow. Don't chase a theme variable for it.
+- **A backgrounded process spawned through `incus exec` dies with the exec session.** `incus exec C -- su - dev
+  -c "nohup ./thing &"` returns, the session is torn down, and the child goes with it — no process, no window,
+  an empty redirect target, nothing in any log. It looks exactly like the program failing to start. Anything
+  long-lived has to be launched by a script *inside* the container that then blocks until it is up.
+- **A UI script that reports every step as fine has told you nothing.** The Designer layout sequence ported from
+  the content repo's im12 rig printed all fourteen of its verbs, errored on none, and had selected the wrong
+  workspace, left a panel open and left the tag provider unchanged. xdotool clicks empty space as happily as a
+  button. The only check that works is capturing the frame and looking at it — which is cheap now
+  (`scripts/designer/designer.sh do ... --shot`), so there is no excuse for inferring a UI state from an exit
+  code. Corollary: a coordinate measured in one Designer is a measurement, not a constant.
 - **`pkill -f` / `pgrep -f` match the shell running them.** The pattern appears in that shell's own command
   line, so `pkill -f "http.server 8901"` kills the shell mid-script and the rest of the command — the edit,
   the commit — silently never runs, surfacing only as exit code 144. Bitten twice here. Match on something
