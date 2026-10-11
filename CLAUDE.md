@@ -110,6 +110,19 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
 - **A symbol's liquid fill is a component property, not a theme variable.** There is no `--vessel*`/`--tank*`/
   `--liquid*` anywhere in the theme layer, so a Vessel's blue fill survives any theme; `--pipe*` and
   `--symbolFill--*` are themeable and do follow. Don't chase a theme variable for it.
+- **The Nautilus CLI is `cmd/naut`, and the integration harness builds it from source.** It used to be
+  `cmd/nautilus`; `useNautilusFromSource` probes both (`nautilusEntrypoints` in `mantle_test.go`) and now
+  *fails* rather than falling back to PATH, because the silent fallback turned the rename into fifteen
+  identical `exec: "nautilus": executable file not found` failures and two red nightlies (2026-10-09, -10)
+  that said nothing about Mantle. Add to that list when it moves again.
+- **This machine's dev stack has no seeded `dev-broker` connection.** The im12 shoot unseeded the dev
+  connections so the video could create one on camera, and the on-camera `plant` connection has
+  `hostId: ""`. Mantle publishes no STATE without a host id, so every `mantle_test.go` edge — they all set
+  `primary-host` to `gw.HostID` — waits the full 30 s and fails with `has not birthed into Ignition yet`,
+  while `clockskew_test.go` and `load_test.go` (no primary host) pass. It looks exactly like a protocol
+  regression and is local drift: CI runs `dev-up.sh --fresh`, which seeds `dev-broker` with
+  `hostId: joy-dev` (`scripts/dev-up.sh:93`). Check the connection's `hostId` before believing a birth
+  failure.
 - **A backgrounded process spawned through `incus exec` dies with the exec session.** `incus exec C -- su - dev
   -c "nohup ./thing &"` returns, the session is torn down, and the child goes with it — no process, no window,
   an empty redirect target, nothing in any log. It looks exactly like the program failing to start. Anything

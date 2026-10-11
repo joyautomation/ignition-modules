@@ -47,18 +47,44 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// useNautilusFromSource builds the nautilus CLI from a checkout beside this repo, unless NAUTILUS_BIN already
-// says which binary to use. An installed `nautilus` is easily months behind the edge-node code under test
-// (an August build created junk tags out of partial template commands; HEAD merges them), and a stale edge
-// makes for failures that are nobody's bug.
+// The CLI's entrypoint has been at more than one path: Nautilus renamed `cmd/nautilus` to `cmd/naut`, and
+// probing only the old name turned that rename into fifteen identical "executable file not found" failures,
+// two nightly CI runs running (2026-10-09, -10). Newest first; add to this list rather than editing it, so a
+// checkout from before a rename still builds.
+var nautilusEntrypoints = []string{"cmd/naut", "cmd/nautilus"}
+
+// What an installed CLI is called, for the no-checkout case. Same ordering rule.
+var nautilusBinNames = []string{"naut", "nautilus"}
+
+// useNautilusFromSource builds the Nautilus CLI from a checkout beside this repo, unless NAUTILUS_BIN already
+// says which binary to use. An installed CLI is easily months behind the edge-node code under test (an August
+// build created junk tags out of partial template commands; HEAD merges them), and a stale edge makes for
+// failures that are nobody's bug.
+//
+// Every path out of here either sets NAUTILUS_BIN to something that exists or returns an error. It used to
+// have a third: warn on stderr and return nil, leaving the tests to discover the problem one cryptic exec
+// failure at a time. That is what hid the rename.
 func useNautilusFromSource() error {
 	if os.Getenv("NAUTILUS_BIN") != "" {
 		return nil
 	}
 	src := env("NAUTILUS_SRC", "../../../nautilus")
-	if _, err := os.Stat(src + "/cmd/nautilus"); err != nil {
-		fmt.Fprintf(os.Stderr, "no Nautilus source at %s; using `nautilus` from PATH\n", src)
-		return nil
+	pkg, err := nautilusPackage(src)
+	if err != nil {
+		return err
+	}
+	if pkg == "" {
+		// No checkout beside us. An installed CLI is a legitimate setup — but it has to actually be
+		// there, and saying so here is the whole point.
+		for _, name := range nautilusBinNames {
+			if path, lookErr := exec.LookPath(name); lookErr == nil {
+				fmt.Fprintf(os.Stderr, "no Nautilus source at %s; using installed %s\n", src, path)
+				return os.Setenv("NAUTILUS_BIN", path)
+			}
+		}
+		return fmt.Errorf("no Nautilus source at %s and no %s on PATH.\n"+
+			"Clone Nautilus beside this repo, or point NAUTILUS_SRC at a checkout, or NAUTILUS_BIN at a built CLI.",
+			src, strings.Join(nautilusBinNames, " or "))
 	}
 	if err := os.MkdirAll("../.run", 0o755); err != nil {
 		return err
@@ -67,12 +93,29 @@ func useNautilusFromSource() error {
 	if err != nil {
 		return err
 	}
-	build := exec.Command("go", "build", "-o", bin, "./cmd/nautilus")
+	build := exec.Command("go", "build", "-o", bin, pkg)
 	build.Dir = src
 	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("building nautilus from %s: %v\n%s", src, err, out)
+		return fmt.Errorf("building %s from %s: %v\n%s", pkg, src, err, out)
 	}
 	return os.Setenv("NAUTILUS_BIN", bin)
+}
+
+// nautilusPackage returns the CLI's package path within src, or "" if src is not a checkout at all. A
+// checkout that holds none of the known entrypoints is an error rather than a fallback: that is a rename,
+// not a missing clone, and the two need telling apart.
+func nautilusPackage(src string) (string, error) {
+	if _, err := os.Stat(src); err != nil {
+		return "", nil
+	}
+	for _, entry := range nautilusEntrypoints {
+		if _, err := os.Stat(filepath.Join(src, entry)); err == nil {
+			return "./" + entry, nil
+		}
+	}
+	return "", fmt.Errorf("the Nautilus checkout at %s has none of %s.\n"+
+		"The CLI entrypoint has moved again: add the new path to nautilusEntrypoints in mantle_test.go.",
+		src, strings.Join(nautilusEntrypoints, ", "))
 }
 
 func env(key, fallback string) string {
