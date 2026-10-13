@@ -1,6 +1,7 @@
 package com.joyautomation.ignition.mantle.tags;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,7 @@ import com.inductiveautomation.ignition.common.tags.model.TagProvider;
 import com.inductiveautomation.ignition.common.tags.paths.parser.TagPathParser;
 import com.inductiveautomation.ignition.common.util.TimeUnits;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
+import com.inductiveautomation.ignition.gateway.tags.managed.DeletionHandler.DeletionResponse;
 import com.inductiveautomation.ignition.gateway.tags.managed.ManagedTagProvider;
 import com.inductiveautomation.ignition.gateway.tags.managed.ManagedTagProviderConfiguration;
 import com.joyautomation.ignition.mantle.sparkplug.HostState.NodeKey;
@@ -116,7 +118,29 @@ public class ManagedTagSink implements TagSink {
             .hasDataTypes(true)
             .build();
         this.provider = context.getTagManager().getOrCreateManagedProvider(configuration);
+        this.provider.setDeletionHandler(this::deleted);
         loadExisting();
+    }
+
+    /**
+     * Someone deleted a tag or folder here. It stays deleted; we only forget it, so the next birth builds it again
+     * in full (and a death doesn't resurrect it from the last values to mark it stale). Covers a delete while the
+     * node is still publishing, which {@link #beginBirth} cannot see: by then a value has recreated the path bare.
+     */
+    private DeletionResponse deleted(TagPath tagPath) {
+        String path = tagPath.toStringPartial();
+        if (path.equals(TYPES_FOLDER) || path.startsWith(TYPES_FOLDER + "/")) {
+            definedTypes.keySet().removeIf(name -> within(TYPES_FOLDER + "/" + TagPaths.segment(name), path));
+        } else {
+            defined.keySet().removeIf(p -> within(p, path));
+            instances.keySet().removeIf(p -> within(p, path));
+            lastValues.keySet().removeIf(p -> within(p, path));
+        }
+        return DeletionResponse.Allowed;
+    }
+
+    private static boolean within(String path, String root) {
+        return root.isEmpty() || path.equals(root) || path.startsWith(root + "/");
     }
 
     /** A writer is called when a tag is written, and returns whether it sent the command. */
@@ -187,6 +211,80 @@ public class ManagedTagSink implements TagSink {
                 existing.add(path);
             } else {
                 collect(path, child);
+            }
+        }
+    }
+
+    /**
+     * Forget what this session defined under a folder that is no longer there. Without this, deleting a node's
+     * folder in the Designer gets it back bare: the next birth matches what we remember, so nothing is defined,
+     * and the first value through updateValue() creates each tag with no history, no historian and no units — the
+     * failure this module exists to prevent, and a silent one. A UDT instance that is now something else, and a
+     * type deleted from _types_, are forgotten the same way. A false "missing" costs only a redundant
+     * configureTag, which never touches a user's layer; a false "present" is the bug, so an unreadable folder is
+     * the only case where the cache is trusted.
+     */
+    @Override
+    public void beginBirth(String folderPath) {
+        Map<String, TagObjectType> present = presentUnder(folderPath);
+        if (present == null) {
+            return;
+        }
+        defined.keySet().removeIf(path -> gone(path, folderPath, present, TagObjectType.AtomicTag));
+        // a flattened instance is a folder by design, so only its presence matters
+        instances.entrySet().removeIf(e -> gone(e.getKey(), folderPath, present,
+            FLATTENED.equals(e.getValue()) ? null : TagObjectType.UdtInstance));
+        if (!definedTypes.isEmpty()) {
+            Map<String, TagObjectType> types = presentUnder(TYPES_FOLDER);
+            if (types != null) {
+                definedTypes.keySet().removeIf(name ->
+                    gone(TYPES_FOLDER + "/" + TagPaths.segment(name), TYPES_FOLDER, types, TagObjectType.UdtType));
+            }
+        }
+    }
+
+    /**
+     * Whether a remembered path under {@code folderPath} is no longer what we made it: missing, or (when
+     * {@code expected} is given) now a different kind of tag. Paths outside the folder are not this birth's.
+     */
+    static boolean gone(String path, String folderPath, Map<String, TagObjectType> present, TagObjectType expected) {
+        if (!path.startsWith(folderPath + "/")) {
+            return false;
+        }
+        TagObjectType type = present.get(path);
+        return type == null || (expected != null && type != expected);
+    }
+
+    /** Every path at or under a folder with its type: empty when the folder is gone, null when it can't be read. */
+    private Map<String, TagObjectType> presentUnder(String folderPath) {
+        try {
+            TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+            if (tagProvider == null) {
+                return null;
+            }
+            List<TagConfigurationModel> roots = tagProvider
+                .getTagConfigsAsync(List.of(TagPathParser.parse(providerName, folderPath)), true, true)
+                .get(15, TimeUnit.SECONDS);
+            Map<String, TagObjectType> present = new HashMap<>();
+            for (TagConfigurationModel root : roots) {
+                walk(folderPath, root, present);
+            }
+            return present;
+        } catch (Exception e) {
+            logger.warn("Could not read '{}' in '{}' before a birth; if it was deleted, its tags may come back "
+                + "without history until the next birth", folderPath, providerName, e);
+            return null;
+        }
+    }
+
+    private static void walk(String path, TagConfigurationModel model, Map<String, TagObjectType> into) {
+        if (model.getType() == null || model.getType() == TagObjectType.Unknown) {
+            return; // what a read of a missing path comes back as
+        }
+        into.put(path, model.getType());
+        if (model.getChildren() != null) {
+            for (TagConfigurationModel child : model.getChildren()) {
+                walk(path + "/" + child.getName(), child, into);
             }
         }
     }

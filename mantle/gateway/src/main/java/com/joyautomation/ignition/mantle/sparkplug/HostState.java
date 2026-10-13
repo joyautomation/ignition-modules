@@ -320,6 +320,8 @@ public class HostState {
 
     /** Shape first, then values: see {@link TagSink#awaitDefinitions()}. */
     private int applyBirth(NodeState ns, String device, SparkplugBPayload p) {
+        sink.beginBirth(device.isEmpty() ? TagPaths.node(ns.key.group(), ns.key.edge())
+            : TagPaths.device(ns.key.group(), ns.key.edge(), device));
         defineMeta(ns, device);
         harvestTypes(ns, p.getMetrics());
         applyMetrics(ns, device, p, Pass.DEFINE);

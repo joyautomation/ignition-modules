@@ -76,6 +76,19 @@ class HostStateTest {
     }
 
     @Test
+    void everyBirthOpensWithItsFolderSoTheSinkCanCheckWhatWasDeleted() throws Exception {
+        nbirth(1);
+        send(DEVICE, "DBIRTH", 1, false, metric("Tank/Level", 7L, MetricDataType.Float, 42.5f));
+
+        int node = sink.events.indexOf("begin Plant/Edge1");
+        int device = sink.events.indexOf("begin Plant/Edge1/PLC1");
+        assertTrue(node >= 0 && node < sink.events.indexOf("define Plant/Edge1/_meta/Online"),
+            "the node's folder is named before anything in it is defined: " + sink.events);
+        assertTrue(device > node && device < sink.events.indexOf("define Plant/Edge1/PLC1/Tank/Level"),
+            "and a device's before its own: " + sink.events);
+    }
+
+    @Test
     void historyIsOnUnlessTheEdgeSaysTransientOrItIsAControl() throws Exception {
         Metric scratch = new MetricBuilder("Scratch", MetricDataType.Int32, 1).isTransient(true).createMetric();
         send(NODE, "NBIRTH", 0, false, bdSeq(1), rebirthControl(), scratch,
@@ -354,6 +367,11 @@ class HostStateTest {
         final Map<String, Date> staleAt = new HashMap<>();
         final Map<String, Date> times = new HashMap<>();
         final List<String> events = new ArrayList<>();
+
+        @Override
+        public void beginBirth(String folderPath) {
+            events.add("begin " + folderPath);
+        }
 
         @Override
         public void define(String path, MetricDataType type, MetricInfo info) {

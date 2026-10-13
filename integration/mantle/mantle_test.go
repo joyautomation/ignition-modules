@@ -413,6 +413,60 @@ func TestACustomizedTagSurvivesARebirth(t *testing.T) {
 	expectValue(t, edge.TagPath("LevelFt"), 17.0)
 }
 
+// What the im12 take caught on 2026-10-09: delete a node's folder, and the next birth has to build it again in
+// full. The module remembered what it had defined, matched the birth against that and defined nothing, and the
+// first values recreated every tag bare (history off, no historian, no units, P101 a plain folder) while the
+// connection's status still read "Recording to Core". Both orders: deleted while the node is down, and deleted
+// while it is still publishing, so values recreate the paths before the birth arrives.
+func TestADeletedNodeComesBackWhole(t *testing.T) {
+	for _, running := range []bool{false, true} {
+		name := "deleted while down"
+		if running {
+			name = "deleted while publishing"
+		}
+		t.Run(name, func(t *testing.T) {
+			edge := startEdge(t)
+			node := strings.TrimSuffix(edge.TagPath(""), "/")
+			if !running {
+				edge.Stop()
+			}
+			must(t, gw.Delete(node))
+			if running {
+				must(t, edge.Set("LevelSP", 13.0)) // NDATA into the deleted folder
+				time.Sleep(time.Second)
+				edge.Stop()
+			}
+			must(t, edge.Restart())
+			eventually(t, 30*time.Second, func() error {
+				v, err := gw.Read(edge.TagPath("_meta/Online"))
+				if err != nil {
+					return err
+				}
+				if v[0].Value != true {
+					return fmt.Errorf("%s has not birthed again (Online = %v)", node, v[0].Value)
+				}
+				return nil
+			})
+
+			level := mustConfig(t, edge.TagPath("LevelFt"))
+			if level["historyEnabled"] != true {
+				t.Errorf("LevelFt historyEnabled = %v after the folder was deleted and the node reborn", level["historyEnabled"])
+			}
+			if p, _ := level["historyProvider"].(string); p == "" {
+				t.Errorf("LevelFt has no historyProvider after the rebuild")
+			}
+			if level["engUnit"] != "ft" {
+				t.Errorf("LevelFt engUnit = %v after the rebuild, want ft", level["engUnit"])
+			}
+			if instance := mustConfig(t, edge.TagPath("P101")); instance["tagType"] != "UdtInstance" && !running {
+				// deleted while publishing, P101 may already be a folder of recreated members, which is
+				// left a folder on purpose (TestAnExistingFolderIsLeftAloneRatherThanConvertedToAUdt)
+				t.Errorf("P101 is %v after the rebuild, want a UdtInstance again", instance["tagType"])
+			}
+		})
+	}
+}
+
 // ── history ──────────────────────────────────────────────────────────────
 
 func TestEveryReportedChangeIsStoredInTheHistorian(t *testing.T) {

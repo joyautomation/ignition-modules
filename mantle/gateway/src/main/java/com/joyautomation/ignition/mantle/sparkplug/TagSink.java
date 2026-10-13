@@ -12,6 +12,14 @@ import org.eclipse.tahu.message.model.MetricDataType;
 public interface TagSink {
 
     /**
+     * Called once at the start of every birth, before any {@link #define}, with the node's or device's folder.
+     * A sink that skips redefining what it has already defined must check here that those tags still exist:
+     * a person can delete a folder at any time, and the birth after that has to build it again in full.
+     */
+    default void beginBirth(String folderPath) {
+    }
+
+    /**
      * Called for every metric in a birth. Must be idempotent: a rebirth of a tag that already exists must not
      * disturb anything a user has customized on it.
      */
