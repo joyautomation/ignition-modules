@@ -139,6 +139,6 @@ public final class ConnectionHealth extends HealthCheck implements CriticalHealt
         if (state.historian() == null) {
             return Result.healthy("Connected. Historizing is off.");
         }
-        return Result.healthy("Connected. Recording to %s.".formatted(state.historian()));
+        return Result.healthy("Connected. New tags record to %s.".formatted(state.historian()));
     }
 }

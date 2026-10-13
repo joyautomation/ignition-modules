@@ -53,7 +53,7 @@ class ConnectionHealthTest {
     /** The ordinary case names the historian, so an operator can see where the data is going. */
     @Test
     void connectedAndRecordingNamesTheHistorian() {
-        assertEquals("Connected. Recording to Core.", check(true, null, "Core", true).getMessage());
+        assertEquals("Connected. New tags record to Core.", check(true, null, "Core", true).getMessage());
     }
 
     /** A stale error from an earlier outage must not make a reconnected connection look broken. */
