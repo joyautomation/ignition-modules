@@ -220,6 +220,35 @@ func TestATemplateBecomesARealUdtType(t *testing.T) {
 	}
 }
 
+// The first birth of a new UDT instance has to land its members' values too. Ignition builds the members from
+// the type after the instance is saved, and the birth's values used to arrive first: they went to history behind
+// the gateway's own initial null, and a member that never changes (Fault, Starts) read null until the next
+// rebirth. Caught on the im12 take, 2026-10-14. Nothing here changes a value, which is the point.
+func TestANewUdtInstancesMembersCarryTheirBirthValues(t *testing.T) {
+	edge := startEdge(t)
+	paths := []string{edge.TagPath("P101/Fault"), edge.TagPath("P101/Running"), edge.TagPath("P101/Starts")}
+	eventually(t, 10*time.Second, func() error {
+		v, err := gw.Read(paths...)
+		if err != nil {
+			return err
+		}
+		for i, p := range paths {
+			if v[i].Value == nil {
+				return fmt.Errorf("%s is null after the first birth (quality %s)", p, v[i].Quality)
+			}
+		}
+		return nil
+	})
+	v, err := gw.Read(paths...)
+	must(t, err)
+	if v[0].Value != false || v[1].Value != false {
+		t.Errorf("Fault/Running = %v/%v after the birth, want false/false", v[0].Value, v[1].Value)
+	}
+	if n, ok := v[2].Value.(float64); !ok || n != 0 {
+		t.Errorf("Starts = %v (%T) after the birth, want 0", v[2].Value, v[2].Value)
+	}
+}
+
 // An installation that already has folder-shaped tags from an older build must not be damaged by the upgrade:
 // converting would mean deleting a user's tags, and their alarms and history settings with them.
 func TestAnExistingFolderIsLeftAloneRatherThanConvertedToAUdt(t *testing.T) {

@@ -1,7 +1,9 @@
 package com.joyautomation.ignition.mantle.tags;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,12 @@ public class ManagedTagSink implements TagSink {
     private final List<Pending> pending = new CopyOnWriteArrayList<>();
 
     private record Pending(String path, DataType dataType) {
+    }
+
+    /** UDT instances created since the last awaitDefinitions(), with the atomic members Ignition has to build */
+    private final List<PendingInstance> pendingInstances = new CopyOnWriteArrayList<>();
+
+    private record PendingInstance(String path, List<String> members) {
     }
 
     /** newest timestamp written per tag: the floor a live value must clear */
@@ -365,12 +373,45 @@ public class ManagedTagSink implements TagSink {
                 return false;
             }
             instances.put(path, typeName);
+            // Ignition builds the members from the type after save() returns, so the birth's values for them
+            // have the same race as a new atomic tag: awaitDefinitions() waits for these too
+            List<String> members = memberLeaves(path, typeName, definedTypes);
+            if (!members.isEmpty()) {
+                pendingInstances.add(new PendingInstance(path, members));
+            }
             return true;
         } catch (Exception e) {
             logger.warn("Could not create UDT instance {} of '{}'; it stays a folder of tags", path, typeName, e);
             instances.put(path, FLATTENED);
             return false;
         }
+    }
+
+    /**
+     * The atomic tags an instance of a type will have, as full paths, through nested instances. Only types this
+     * session declared are known; a nested type we never saw contributes nothing rather than a guess.
+     */
+    static List<String> memberLeaves(String path, String typeName, Map<String, List<TypeMember>> types) {
+        List<String> leaves = new ArrayList<>();
+        collectLeaves(path, typeName, types, leaves, new HashSet<>());
+        return leaves;
+    }
+
+    private static void collectLeaves(String path, String typeName, Map<String, List<TypeMember>> types,
+                                      List<String> into, Set<String> seen) {
+        List<TypeMember> members = types.get(typeName);
+        if (members == null || !seen.add(typeName)) {
+            return; // unknown, or a type that contains itself: Ignition would refuse it anyway
+        }
+        for (TypeMember member : members) {
+            String memberPath = path + "/" + member.name();
+            if (member.isNested()) {
+                collectLeaves(memberPath, member.nestedTypeRef(), types, into, seen);
+            } else {
+                into.add(memberPath);
+            }
+        }
+        seen.remove(typeName);
     }
 
     /** The tag object type at a path today, or null when nothing is there. */
@@ -467,6 +508,7 @@ public class ManagedTagSink implements TagSink {
      */
     @Override
     public void awaitDefinitions() {
+        awaitInstances();
         if (pending.isEmpty()) {
             return;
         }
@@ -495,6 +537,53 @@ public class ManagedTagSink implements TagSink {
         for (Pending p : batch) {
             lastTimes.merge(p.path(), now, Math::max);
         }
+    }
+
+    /**
+     * The same wait for the members of new UDT instances, which are built from the type rather than configured one
+     * by one. A member that only reports on change (a fault bit, a setpoint) otherwise sat at null after the first
+     * birth, with its birth value filed as history behind the gateway's own initial null. One read of every member
+     * per poll, not one per member.
+     */
+    private void awaitInstances() {
+        if (pendingInstances.isEmpty()) {
+            return;
+        }
+        List<PendingInstance> batch = List.copyOf(pendingInstances);
+        pendingInstances.removeAll(batch);
+        List<String> members = batch.stream().flatMap(i -> i.members().stream()).toList();
+        long deadline = System.currentTimeMillis() + DEFINITION_TIMEOUT_MS;
+        try {
+            TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+            List<TagPath> probe = new ArrayList<>();
+            for (String member : members) {
+                probe.add(TagPathParser.parse(providerName, member));
+            }
+            while (!allAtomic(tagProvider, probe)) {
+                if (System.currentTimeMillis() > deadline) {
+                    logger.warn("Gave up waiting for the members of {} new UDT instances in '{}' (first: {}); their "
+                        + "first values may be lost until the next change", batch.size(), providerName,
+                        batch.get(0).path());
+                    break;
+                }
+                Thread.sleep(20);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            logger.warn("Could not confirm new UDT instances in '{}'", providerName, e);
+        }
+        long now = System.currentTimeMillis();
+        for (String member : members) {
+            lastTimes.merge(member, now, Math::max);
+        }
+    }
+
+    private static boolean allAtomic(TagProvider tagProvider, List<TagPath> probe) throws Exception {
+        List<TagConfigurationModel> configs = tagProvider.getTagConfigsAsync(probe, false, false)
+            .get(10, TimeUnit.SECONDS);
+        return configs.size() == probe.size()
+            && configs.stream().allMatch(c -> c.getType() == TagObjectType.AtomicTag);
     }
 
     private static boolean ready(TagProvider tagProvider, List<TagPath> probe, DataType dataType) throws Exception {
