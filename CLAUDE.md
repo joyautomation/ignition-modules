@@ -115,6 +115,11 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
   *fails* rather than falling back to PATH, because the silent fallback turned the rename into fifteen
   identical `exec: "nautilus": executable file not found` failures and two red nightlies (2026-10-09, -10)
   that said nothing about Mantle. Add to that list when it moves again.
+- **A Nautilus edge is read-only unless `sparkplug.writable` lists the tag** (Nautilus `6d41374`, 2026-10-07).
+  CI builds Nautilus from `main`, so that default landing turned the nightly red for twelve days with no change
+  here: `TestAWrite*` failed with `edge LevelSP = 10, want 21.25`, and only the edge's own log said why
+  (`command write refused — not writable`). When a nightly fails on an unchanged commit, read the nautilus log
+  the test prints before suspecting Mantle.
 - **This machine's dev stack has no seeded `dev-broker` connection.** The im12 shoot unseeded the dev
   connections so the video could create one on camera, and the on-camera `plant` connection has
   `hostId: ""`. Mantle publishes no STATE without a host id, so every `mantle_test.go` edge — they all set

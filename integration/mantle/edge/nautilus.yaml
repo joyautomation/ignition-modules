@@ -37,6 +37,11 @@ sparkplug:
   # path that has to land in Ignition's historian with its original times.
   primary-host: joy-dev
   store-forward: 2000
+  # A Nautilus edge refuses every NCMD/DCMD write unless the tag is listed here (Node Control/Rebirth is
+  # always honoured). P101 is opened whole, not just P101.SpeedSP: the gate prunes a template command down to
+  # its writable members, which would hide it if Mantle ever sent the whole struct back and clobbered Running —
+  # the very thing TestAWriteToATemplateMemberLeavesTheOtherMembersAlone is there to catch.
+  writable: [LevelSP, CountEnable, P101_Enable, P101]
   # No deadband, so a test sees every change it causes.
   default-class: { deadband: 0, max-interval: 10s }
   classes:
