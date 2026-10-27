@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,8 @@ import java.util.function.BiPredicate;
 
 import com.inductiveautomation.ignition.common.config.BasicBoundPropertySet;
 import com.inductiveautomation.ignition.common.config.BoundPropertySet;
+import com.inductiveautomation.ignition.common.config.Property;
+import com.inductiveautomation.ignition.common.config.PropertySet;
 import com.inductiveautomation.ignition.common.model.values.QualityCode;
 import com.inductiveautomation.ignition.common.sqltags.model.types.DataType;
 import com.inductiveautomation.ignition.common.tags.config.BasicTagConfiguration;
@@ -48,10 +51,15 @@ import org.slf4j.LoggerFactory;
  * rebirths and restarts. There is no second set of tags.
  * <p>
  * What makes that safe is that Ignition keeps two layers per tag. {@code configureTag} writes the programmatic layer
- * (stored under "prg" in the tag's JSON); edits made in the Designer are stored beside it and win. So a rebirth can
- * refresh what the edge says about a metric (datatype, units, range, documentation, the history default) without
- * touching a user's override. Verified against 8.3.9: a tag with history switched off, different units and an alarm
- * kept all three across a rebirth that set history on and the original units.
+ * (stored under "prg" in the tag's JSON); edits made in the Designer are stored beside it and win. So the history
+ * default this module applies never disturbs a history setting a person made, and an alarm, a script or a
+ * security setting is never the module's to touch.
+ * <p>
+ * The edge owns what the birth carries, though. A metric's datatype, units, range and documentation come from the
+ * device, and when a person has overridden one of them in the Designer and the next birth says otherwise, the
+ * birth wins ({@link #refreshProperties}). What a birth does not carry is left exactly as the person set it.
+ * Verified against 8.3.9: a tag with history switched off, hand-typed units and an alarm kept history off and the
+ * alarm across a rebirth, and got its units back from the edge.
  */
 public class ManagedTagSink implements TagSink {
     private static final Logger logger = LoggerFactory.getLogger("Mantle.Tags");
@@ -101,6 +109,15 @@ public class ManagedTagSink implements TagSink {
 
     private record PendingInstance(String path, List<String> members) {
     }
+
+    /** every tag this birth described, so what the birth carries can be put back over a person's override */
+    private final List<Refresh> refresh = new CopyOnWriteArrayList<>();
+
+    private record Refresh(String path, DataType dataType, MetricInfo info) {
+    }
+
+    /** tag configurations read or saved per request; a birth of thousands of metrics is split up, not refused */
+    private static final int CONFIG_BATCH = 500;
 
     /** newest timestamp written per tag: the floor a live value must clear */
     private final Map<String, Long> lastTimes = new ConcurrentHashMap<>();
@@ -334,6 +351,20 @@ public class ManagedTagSink implements TagSink {
             }
             definedTypes.put(typeName, List.copyOf(members));
             logger.info("UDT type '{}' in '{}' has {} members", typeName, providerName, members.size());
+            if (previous != null) {
+                // Ignition rebuilds every existing instance to the new shape after save() returns. A member the
+                // type gained has the same race as a new instance's members: its birth value would land before
+                // the member exists and be wiped by the gateway's initial null. So those instances wait again.
+                for (Map.Entry<String, String> instance : instances.entrySet()) {
+                    if (FLATTENED.equals(instance.getValue())) {
+                        continue;
+                    }
+                    List<String> leaves = memberLeaves(instance.getKey(), instance.getValue(), definedTypes);
+                    if (!leaves.isEmpty()) {
+                        pendingInstances.add(new PendingInstance(instance.getKey(), leaves));
+                    }
+                }
+            }
             return true;
         } catch (Exception e) {
             logger.warn("Could not create UDT type '{}' in '{}'; instances of it will be folders of tags instead",
@@ -455,8 +486,9 @@ public class ManagedTagSink implements TagSink {
         }
         Definition definition = new Definition(dataType, info, historize && info.historize() ? historian() : null);
         Definition previous = defined.put(path, definition);
+        refresh.add(new Refresh(path, dataType, info));
         if (definition.equals(previous)) {
-            return; // a rebirth that says nothing new
+            return; // a rebirth that says nothing new to the module's layer
         }
         if (previous == null || previous.dataType() != dataType) {
             // created, or retyped: either way the gateway is about to (re)initialize it
@@ -509,6 +541,11 @@ public class ManagedTagSink implements TagSink {
     @Override
     public void awaitDefinitions() {
         awaitInstances();
+        awaitPending();
+        refreshProperties();
+    }
+
+    private void awaitPending() {
         if (pending.isEmpty()) {
             return;
         }
@@ -579,6 +616,97 @@ public class ManagedTagSink implements TagSink {
         }
     }
 
+    /**
+     * The birth wins over a person's override for what it carries. A person can retype a unit or a description in
+     * the Designer, and their layer then hides the module's; the next birth puts the device's value back, because
+     * the device is the authority on its own units. One read and one save per birth, and nothing is saved when
+     * nothing differs. What a birth does not carry (an alarm, a script, security, a history setting) is not
+     * touched: the save merges, like an edit in the Designer.
+     */
+    private void refreshProperties() {
+        if (refresh.isEmpty()) {
+            return;
+        }
+        List<Refresh> batch = List.copyOf(refresh);
+        refresh.removeAll(batch);
+        try {
+            TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+            if (tagProvider == null) {
+                return;
+            }
+            Map<String, Refresh> wanted = new LinkedHashMap<>();
+            for (Refresh r : batch) {
+                wanted.put(r.path(), r); // the last word on a path is the birth's
+            }
+            List<TagPath> paths = new ArrayList<>();
+            for (String path : wanted.keySet()) {
+                paths.add(TagPathParser.parse(providerName, path));
+            }
+            List<TagConfiguration> saves = new ArrayList<>();
+            for (int from = 0; from < paths.size(); from += CONFIG_BATCH) {
+                List<TagPath> slice = paths.subList(from, Math.min(paths.size(), from + CONFIG_BATCH));
+                List<TagConfigurationModel> current = tagProvider.getTagConfigsAsync(slice, false, false)
+                    .get(30, TimeUnit.SECONDS);
+                for (TagConfigurationModel model : current) {
+                    if (model.getType() != TagObjectType.AtomicTag || model.getPath() == null) {
+                        continue;
+                    }
+                    Refresh r = wanted.get(model.getPath().toStringPartial());
+                    if (r == null) {
+                        continue;
+                    }
+                    Map<Property<?>, Object> changes = stale(model, r.dataType(), r.info());
+                    if (!changes.isEmpty()) {
+                        saves.add(withChanges(model.getPath(), changes));
+                    }
+                }
+            }
+            for (int from = 0; from < saves.size(); from += CONFIG_BATCH) {
+                List<TagConfiguration> slice = saves.subList(from, Math.min(saves.size(), from + CONFIG_BATCH));
+                tagProvider.saveTagConfigsAsync(slice, CollisionPolicy.MergeOverwrite).get(60, TimeUnit.SECONDS);
+            }
+            if (!saves.isEmpty()) {
+                logger.info("Put the edge's datatype, units, range or documentation back on {} tags in '{}' that "
+                    + "had been overridden in the Designer", saves.size(), providerName);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            logger.warn("Could not put the edge's units and documentation back over Designer overrides in '{}'",
+                providerName, e);
+        }
+    }
+
+    /**
+     * What a birth says about a tag that the tag does not currently say. Only the properties the birth carries
+     * count: a null is "the birth did not say", never "clear it".
+     */
+    static Map<Property<?>, Object> stale(PropertySet current, DataType dataType, MetricInfo info) {
+        Map<Property<?>, Object> changes = new LinkedHashMap<>();
+        want(changes, current, WellKnownTagProps.DataType, dataType);
+        want(changes, current, WellKnownTagProps.EngUnit, info.engUnit());
+        want(changes, current, WellKnownTagProps.Documentation, info.documentation());
+        want(changes, current, WellKnownTagProps.EngLow, info.engLow());
+        want(changes, current, WellKnownTagProps.EngHigh, info.engHigh());
+        return changes;
+    }
+
+    private static <T> void want(Map<Property<?>, Object> changes, PropertySet current, Property<T> prop, T value) {
+        if (value != null && !value.equals(current.get(prop))) {
+            changes.put(prop, value);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static TagConfiguration withChanges(TagPath path, Map<Property<?>, Object> changes) {
+        TagConfiguration config = BasicTagConfiguration.createNew(path);
+        config.setType(TagObjectType.AtomicTag);
+        for (Map.Entry<Property<?>, Object> change : changes.entrySet()) {
+            config.set((Property) change.getKey(), change.getValue());
+        }
+        return config;
+    }
+
     private static boolean allAtomic(TagProvider tagProvider, List<TagPath> probe) throws Exception {
         List<TagConfigurationModel> configs = tagProvider.getTagConfigsAsync(probe, false, false)
             .get(10, TimeUnit.SECONDS);
@@ -623,6 +751,11 @@ public class ManagedTagSink implements TagSink {
                 historians.get(0), providerName);
         }
         return historians.get(0);
+    }
+
+    @Override
+    public void refresh(String path, MetricInfo info) {
+        refresh.add(new Refresh(path, null, info));
     }
 
     @Override

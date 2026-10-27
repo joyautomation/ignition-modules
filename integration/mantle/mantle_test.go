@@ -410,28 +410,36 @@ func TestTheModuleIdentifiesItsVendor(t *testing.T) {
 
 // ── the promise: one set of tags ─────────────────────────────────────────
 
+// The rule (James, 2026-10-26): the edge owns what the birth carries, the Designer owns the rest. A rebirth puts
+// the device's datatype, units, range and documentation back over anything typed over them, and never touches an
+// alarm, a script, security or a history setting, because the birth says nothing about those.
 func TestACustomizedTagSurvivesARebirth(t *testing.T) {
 	edge := startEdge(t)
 	node := strings.TrimSuffix(edge.TagPath(""), "/")
 
-	// What a person does in the Designer: switch history off, put an alarm on it, document it.
+	// What a person does in the Designer: switch history off, put an alarm on it, document it, retype the unit.
 	must(t, gw.Configure(node, map[string]any{
 		"name":           "LevelFt",
 		"historyEnabled": false,
-		"engUnit":        "ft",
+		"engUnit":        "feet",
 		"documentation":  "set by the integration test",
 		"alarms": []map[string]any{
 			{"name": "High Level", "mode": "AboveValue", "setpointA": 25.0, "priority": "High"},
 		},
 	}))
+	if cfg := mustConfig(t, edge.TagPath("LevelFt")); cfg["engUnit"] != "feet" {
+		t.Fatalf("engUnit = %v right after the edit, want feet", cfg["engUnit"])
+	}
 	rebirth(t, edge)
 
 	cfg := mustConfig(t, edge.TagPath("LevelFt"))
 	if cfg["historyEnabled"] != false {
 		t.Errorf("historyEnabled = %v after rebirth; the module overwrote a user's choice", cfg["historyEnabled"])
 	}
-	if cfg["engUnit"] != "ft" || cfg["documentation"] != "set by the integration test" {
-		t.Errorf("engUnit/documentation = %v / %v after rebirth", cfg["engUnit"], cfg["documentation"])
+	// the birth carries both of these (edge/nautilus.yaml: unit "ft", desc "Level"), so the edge's values win
+	if cfg["engUnit"] != "ft" || cfg["documentation"] != "Level" {
+		t.Errorf("engUnit/documentation = %v / %v after rebirth, want the birth's ft / Level",
+			cfg["engUnit"], cfg["documentation"])
 	}
 	alarms, _ := cfg["alarms"].([]any)
 	if len(alarms) != 1 {
@@ -440,6 +448,64 @@ func TestACustomizedTagSurvivesARebirth(t *testing.T) {
 	// And the tag is still alive and fed.
 	must(t, edge.Set("LevelSP", 17.0))
 	expectValue(t, edge.TagPath("LevelFt"), 17.0)
+}
+
+// A UDT that grows a member at the edge grows it here too, with its birth value, and nothing on the other members
+// is touched. (Cirrus Link's MQTT Engine 5.0.2 keeps its old definition and documents deleting the instances and
+// the definition to pick the change up: content repo, research/mqtt-engine-5.0.2-behaviour.md, 2026-10-26.)
+// Before this was handled, the new member read null until its first change: Ignition rebuilds the instances
+// after the type is saved, the same race as a brand-new instance's members.
+func TestAChangedTemplateGrowsTheUdtWithItsBirthValue(t *testing.T) {
+	edge := startEdge(t)
+	must(t, gw.Configure(edge.TagPath("P101"), map[string]any{
+		"name": "Speed",
+		"alarms": []map[string]any{
+			{"name": "Overspeed", "mode": "AboveValue", "setpointA": 90.0, "priority": "High"},
+		},
+	}))
+
+	// the edge's Motor type gains a member; the next birth carries the six-member definition
+	types := filepath.Join(edge.Dir, "types.st")
+	raw, err := os.ReadFile(types)
+	must(t, err)
+	grown := strings.Replace(string(raw), "    Starts  : DINT;", "    Starts  : DINT;\n    Temp    : REAL;", 1)
+	if grown == string(raw) {
+		t.Fatal("edge/types.st no longer has the Starts member this test grows Motor past; update the test")
+	}
+	must(t, os.WriteFile(types, []byte(grown), 0o644))
+	restartEdge(t, edge)
+
+	udt, err := gw.ConfigTree("_types_/Motor")
+	must(t, err)
+	members := map[string]string{}
+	if tags, ok := udt["tags"].([]any); ok {
+		for _, m := range tags {
+			member := m.(map[string]any)
+			name, _ := member["name"].(string)
+			members[name], _ = member["dataType"].(string)
+		}
+	}
+	if members["Temp"] != "Float8" {
+		t.Errorf("_types_/Motor after the change: Temp is %q, want Float8 (members %v)", members["Temp"], members)
+	}
+	eventually(t, 10*time.Second, func() error {
+		v, err := gw.Read(edge.TagPath("P101/Temp"))
+		if err != nil {
+			return err
+		}
+		if v[0].Value == nil {
+			return fmt.Errorf("P101/Temp is null after the birth that added it (quality %s)", v[0].Quality)
+		}
+		return nil
+	})
+	if v := mustRead(t, edge.TagPath("P101/Temp")); v.Value != 0.0 {
+		t.Errorf("P101/Temp = %v (%T) after the birth, want its birth value 0", v.Value, v.Value)
+	}
+	if alarms, _ := mustConfig(t, edge.TagPath("P101/Speed"))["alarms"].([]any); len(alarms) != 1 {
+		t.Errorf("P101/Speed alarms = %v after the type changed, want the one that was configured", alarms)
+	}
+	must(t, edge.Set("P101_Enable", true))
+	expectValue(t, edge.TagPath("P101/Running"), true)
 }
 
 // What the im12 take caught on 2026-10-09: delete a node's folder, and the next birth has to build it again in
@@ -876,6 +942,25 @@ func rebirth(t *testing.T, edge *harness.Edge) {
 		t.Fatalf("write Node Control/Rebirth: quality %q, err %v", q, err)
 	}
 	eventually(t, 20*time.Second, func() error {
+		after, err := gw.Read(edge.TagPath("_meta/Last Birth"))
+		if err != nil {
+			return err
+		}
+		if after[0].Timestamp <= before.Timestamp {
+			return fmt.Errorf("no new birth yet")
+		}
+		return nil
+	})
+}
+
+// restartEdge stops the node (its will is its NDEATH) and starts the same project again, and waits for the new
+// birth to land. Unlike rebirth(), the edge re-reads its project, so a change to it is in the birth.
+func restartEdge(t *testing.T, edge *harness.Edge) {
+	t.Helper()
+	before := mustRead(t, edge.TagPath("_meta/Last Birth"))
+	edge.Stop()
+	must(t, edge.Restart())
+	eventually(t, 30*time.Second, func() error {
 		after, err := gw.Read(edge.TagPath("_meta/Last Birth"))
 		if err != nil {
 			return err

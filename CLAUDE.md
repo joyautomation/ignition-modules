@@ -248,7 +248,10 @@ and `sourcing.md` first. Rules specific to this project:
 - Bugs found, wrong guesses, and measurements (6 of 16 vs 15 of 16) make better ideas than features. Record the
   number and the test that produced it.
 - Cross-reference instead of duplicating: Nautilus-side stories are `N-##` and belong to that section.
-- **Nothing here has tested Cirrus Link's MQTT Engine.** Don't write a comparison claim into an idea as fact.
+- **Comparison claims about Cirrus Link's MQTT Engine come from a measurement, not memory.** Engine 5.0.2 on 8.3.9
+  was tested on 2026-10-26: content repo, `research/mqtt-engine-5.0.2-behaviour.md` (what survives a rebirth,
+  a gateway restart, a tag delete, a UDT change; with Cirrus Link's own doc links). Anything not in that note
+  is still untested; don't write it into an idea as fact.
 - That repo usually has another session's uncommitted work in it. Commit only your own hunk (build the index
   entry from `HEAD` plus your text; see the first `IM` commit), never `git add -A` there, and don't push it.
 

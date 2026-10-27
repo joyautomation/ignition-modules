@@ -21,9 +21,18 @@ public interface TagSink {
 
     /**
      * Called for every metric in a birth. Must be idempotent: a rebirth of a tag that already exists must not
-     * disturb anything a user has customized on it.
+     * disturb anything a user has customized on it that the birth does not carry. What it does carry (datatype,
+     * units, range, documentation) is the edge's to set, and a rebirth puts it back over a user's override.
      */
     void define(String path, MetricDataType type, MetricInfo info);
+
+    /**
+     * A member of a UDT instance, with whatever the birth said about it beyond its type. Ignition built the tag
+     * from the type, so there is nothing to define, but the birth's units and documentation still beat a user's
+     * override, as for {@link #define}.
+     */
+    default void refresh(String path, MetricInfo info) {
+    }
 
     /**
      * A Sparkplug template definition, as an Ignition UDT type. Called before any instance that refers to it,

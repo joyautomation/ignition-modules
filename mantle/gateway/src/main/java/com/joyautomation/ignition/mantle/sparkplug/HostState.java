@@ -651,6 +651,7 @@ public class HostState {
                 if (info.writable()) {
                     sink.allowWrites(path);
                 }
+                sink.refresh(path, info);
             } else {
                 sink.define(path, m.getDataType(), info);
             }

@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Map;
 
+import com.inductiveautomation.ignition.common.config.BasicBoundPropertySet;
+import com.inductiveautomation.ignition.common.sqltags.model.types.DataType;
+import com.inductiveautomation.ignition.common.tags.config.properties.WellKnownTagProps;
 import com.inductiveautomation.ignition.common.tags.config.types.TagObjectType;
 import com.joyautomation.ignition.mantle.sparkplug.TagSink.MetricInfo;
 import com.joyautomation.ignition.mantle.sparkplug.TagSink.TypeMember;
@@ -75,5 +78,46 @@ class ManagedTagSinkTest {
         Map<String, List<TypeMember>> loop = Map.of(
             "Loop", List.of(atomic("A"), new TypeMember("Again", MetricDataType.Template, "Loop", MetricInfo.DEFAULT)));
         assertEquals(List.of("X/A"), ManagedTagSink.memberLeaves("X", "Loop", loop));
+    }
+
+    // ── what a rebirth puts back over a person's override ──────────────────────
+
+    private static MetricInfo birth(String unit, String doc) {
+        return new MetricInfo(unit, doc, null, null, true, true);
+    }
+
+    @Test
+    void theBirthsUnitsComeBackOverARetypedUnit() {
+        BasicBoundPropertySet current = new BasicBoundPropertySet();
+        current.set(WellKnownTagProps.DataType, DataType.Float8);
+        current.set(WellKnownTagProps.EngUnit, "feet");
+        current.set(WellKnownTagProps.Documentation, "Level");
+        assertEquals(Map.of(WellKnownTagProps.EngUnit, "ft"),
+            ManagedTagSink.stale(current, DataType.Float8, birth("ft", "Level")));
+    }
+
+    @Test
+    void whatTheBirthDoesNotCarryIsNotTouched() {
+        BasicBoundPropertySet current = new BasicBoundPropertySet();
+        current.set(WellKnownTagProps.EngUnit, "feet");
+        current.set(WellKnownTagProps.Documentation, "mine");
+        // no datatype either: a UDT member's type is the type's business
+        assertTrue(ManagedTagSink.stale(current, null, birth(null, null)).isEmpty());
+    }
+
+    @Test
+    void aTagThatAlreadySaysWhatTheBirthSaysIsLeftAlone() {
+        BasicBoundPropertySet current = new BasicBoundPropertySet();
+        current.set(WellKnownTagProps.DataType, DataType.Float8);
+        current.set(WellKnownTagProps.EngUnit, "ft");
+        assertTrue(ManagedTagSink.stale(current, DataType.Float8, birth("ft", null)).isEmpty());
+    }
+
+    @Test
+    void aRetypedTagGetsItsDatatypeBack() {
+        BasicBoundPropertySet current = new BasicBoundPropertySet();
+        current.set(WellKnownTagProps.DataType, DataType.Int4);
+        assertEquals(Map.of(WellKnownTagProps.DataType, DataType.Float8),
+            ManagedTagSink.stale(current, DataType.Float8, birth(null, null)));
     }
 }

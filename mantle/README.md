@@ -19,19 +19,28 @@ Sparkplug TCK host profile.
 ## Why customization is safe
 
 Ignition keeps two layers per tag. What the module sets through `configureTag` is stored under `"prg"` in the tag's
-JSON; what a person sets in the Designer is stored beside it and wins. A rebirth refreshes the module's layer
-(datatype, units, range, documentation, the history default) and cannot reach the user's.
+JSON; what a person sets in the Designer is stored beside it and wins. The rule for which is which:
+
+- **The edge owns what the birth carries.** Datatype, units, range and documentation come from the device. A
+  rebirth puts them back, even over something typed into the Designer, because the device is the authority on
+  what it publishes.
+- **The Designer owns everything the birth does not carry.** Alarms, scripts, security, scaling, and a history
+  setting (the module applies a history *default* to new tags and never touches a history choice a person made)
+  stay exactly as set, across rebirths, reconnects and gateway restarts.
 
 ```json
 {
   "name": "Level",
   "tagType": "AtomicTag",
   "historyEnabled": false,                       <- yours: stays
-  "engUnit": "m",                                <- yours: stays
+  "engUnit": "m",                                <- the next birth says "ft": "ft" comes back
   "alarms": [{ "name": "High Level", "...": "" }],
   "prg": { "dataType": "Float4", "engUnit": "ft", "historyEnabled": true, "historyProvider": "Core" }
 }
 ```
+
+A UDT that changes at the edge changes here too: a member the type gains appears on every instance with its birth
+value, and the alarms on the other members stay.
 
 That was tested against 8.3.9, not assumed: see *What has been verified*.
 
