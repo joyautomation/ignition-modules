@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -94,15 +95,34 @@ class ManagedTagSinkTest {
         BasicBoundPropertySet own = new BasicBoundPropertySet();
         own.set(WellKnownTagProps.EngUnit, "feet");
         Map<Property<?>, Object> birth = ManagedTagSink.carried(DataType.Float8, birth("ft", "Level"));
-        assertTrue(ManagedTagSink.reconcile(own, birth, birth));
+        assertTrue(ManagedTagSink.reconcile(own, birth, birth, new ArrayList<>()));
         // gone from the person's layer, so the Designer stops marking it as changed on this tag
         assertFalse(own.contains(WellKnownTagProps.EngUnit));
     }
 
     @Test
+    void aRevertedEditIsDescribedInTheEditorsWords() {
+        BasicBoundPropertySet own = new BasicBoundPropertySet();
+        own.set(WellKnownTagProps.EngUnit, "feet");
+        own.set(WellKnownTagProps.Documentation, "Level"); // a 1.3.2 copy of the edge's own value: housekeeping
+        Map<Property<?>, Object> birth = ManagedTagSink.carried(DataType.Float8, birth("ft", "Level"));
+        List<String> replaced = new ArrayList<>();
+        assertTrue(ManagedTagSink.reconcile(own, birth, birth, replaced));
+        assertEquals(List.of("Engineering Units 'feet' -> 'ft'"), replaced);
+    }
+
+    @Test
+    void aMembersFirstOverrideFromItsBirthIsNotCalledARevert() {
+        Map<Property<?>, Object> birth = ManagedTagSink.carried(null, birth("rpm", null));
+        List<String> replaced = new ArrayList<>();
+        assertTrue(ManagedTagSink.reconcile(new BasicBoundPropertySet(), birth, Map.of(), replaced));
+        assertTrue(replaced.isEmpty());
+    }
+
+    @Test
     void aTagNobodyEditedIsLeftAlone() {
         Map<Property<?>, Object> birth = ManagedTagSink.carried(DataType.Float8, birth("ft", "Level"));
-        assertFalse(ManagedTagSink.reconcile(new BasicBoundPropertySet(), birth, birth));
+        assertFalse(ManagedTagSink.reconcile(new BasicBoundPropertySet(), birth, birth, new ArrayList<>()));
     }
 
     @Test
@@ -112,7 +132,7 @@ class ManagedTagSinkTest {
         own.set(WellKnownTagProps.Tooltip, "mine");
         // this birth says nothing about units, and nothing about tooltips ever
         Map<Property<?>, Object> birth = ManagedTagSink.carried(DataType.Float8, birth(null, "Level"));
-        assertFalse(ManagedTagSink.reconcile(own, birth, birth));
+        assertFalse(ManagedTagSink.reconcile(own, birth, birth, new ArrayList<>()));
         assertEquals("feet", own.get(WellKnownTagProps.EngUnit));
         assertEquals("mine", own.get(WellKnownTagProps.Tooltip));
     }
@@ -122,7 +142,7 @@ class ManagedTagSinkTest {
         BasicBoundPropertySet own = new BasicBoundPropertySet();
         own.set(WellKnownTagProps.DataType, DataType.Int4);
         Map<Property<?>, Object> birth = ManagedTagSink.carried(DataType.Float8, birth(null, null));
-        assertTrue(ManagedTagSink.reconcile(own, birth, birth));
+        assertTrue(ManagedTagSink.reconcile(own, birth, birth, new ArrayList<>()));
         assertFalse(own.contains(WellKnownTagProps.DataType));
     }
 
@@ -135,7 +155,7 @@ class ManagedTagSinkTest {
         own.set(WellKnownTagProps.Documentation, "by hand");
         Map<Property<?>, Object> birth = ManagedTagSink.carried(null, birth("rpm", "Shaft speed"));
         Map<Property<?>, Object> type = ManagedTagSink.carried(null, birth("rpm", null));
-        assertTrue(ManagedTagSink.reconcile(own, birth, type));
+        assertTrue(ManagedTagSink.reconcile(own, birth, type, new ArrayList<>()));
         assertFalse(own.contains(WellKnownTagProps.EngUnit), "the type already says rpm: no override");
         assertEquals("Shaft speed", own.get(WellKnownTagProps.Documentation), "the type says nothing: override");
     }
@@ -145,7 +165,7 @@ class ManagedTagSinkTest {
         BasicBoundPropertySet own = new BasicBoundPropertySet();
         own.set(WellKnownTagProps.Documentation, "Shaft speed");
         Map<Property<?>, Object> birth = ManagedTagSink.carried(null, birth(null, "Shaft speed"));
-        assertFalse(ManagedTagSink.reconcile(own, birth, Map.of()));
+        assertFalse(ManagedTagSink.reconcile(own, birth, Map.of(), new ArrayList<>()));
     }
 
     @Test

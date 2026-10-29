@@ -648,6 +648,7 @@ public class ManagedTagSink implements TagSink {
                 paths.add(TagPathParser.parse(providerName, path));
             }
             List<TagConfiguration> saves = new ArrayList<>();
+            List<String> reverted = new ArrayList<>();
             for (int from = 0; from < paths.size(); from += CONFIG_BATCH) {
                 List<TagPath> slice = paths.subList(from, Math.min(paths.size(), from + CONFIG_BATCH));
                 // localPropsOnly: the person's layer alone, which is what gets written back
@@ -667,7 +668,11 @@ public class ManagedTagSink implements TagSink {
                     Map<Property<?>, Object> inherited = r.dataType() != null
                         ? birth // a plain tag: the module's layer says what this birth says
                         : carried(null, typeMemberInfo(path, instances, definedTypes));
-                    if (reconcile(model, birth, inherited)) {
+                    List<String> replaced = new ArrayList<>();
+                    if (reconcile(model, birth, inherited, replaced)) {
+                        if (!replaced.isEmpty()) {
+                            reverted.add(path + ": " + String.join(", ", replaced));
+                        }
                         if (model.getType() == null) {
                             model.setType(TagObjectType.AtomicTag);
                         }
@@ -679,9 +684,14 @@ public class ManagedTagSink implements TagSink {
                 List<TagConfiguration> slice = saves.subList(from, Math.min(saves.size(), from + CONFIG_BATCH));
                 tagProvider.saveTagConfigsAsync(slice, CollisionPolicy.Overwrite).get(60, TimeUnit.SECONDS);
             }
-            if (!saves.isEmpty()) {
-                logger.info("Put the edge's datatype, units, range or documentation back on {} tags in '{}' that "
-                    + "had been overridden in the Designer", saves.size(), providerName);
+            // Said per tag, because this is the moment a person finds their edit gone and goes looking for why.
+            for (int i = 0; i < Math.min(reverted.size(), REVERTS_LOGGED); i++) {
+                logger.info("[{}]{} from the edge's birth. The edge sets these; change them at the edge to keep them.",
+                    providerName, reverted.get(i));
+            }
+            if (reverted.size() > REVERTS_LOGGED) {
+                logger.info("... and {} more tags in '{}' had a Designer edit to what the edge sets put back",
+                    reverted.size() - REVERTS_LOGGED, providerName);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -718,16 +728,32 @@ public class ManagedTagSink implements TagSink {
         return carried;
     }
 
+    /** per birth; past this the log says how many more rather than listing a mass edit line by line */
+    private static final int REVERTS_LOGGED = 20;
+
+    /** the tag editor's own names for what a birth carries, so the log reads like the screen the person was on */
+    private static final Map<Property<?>, String> LABELS = Map.of(
+        WellKnownTagProps.DataType, "Data Type",
+        WellKnownTagProps.EngUnit, "Engineering Units",
+        WellKnownTagProps.EngLow, "Engineering Low Limit",
+        WellKnownTagProps.EngHigh, "Engineering High Limit",
+        WellKnownTagProps.Documentation, "Documentation");
+
     /**
      * Brings a tag's own layer in line with a birth: an override of something the birth carries is dropped where
      * the tag would inherit the birth's value anyway, and set where it would not. Returns whether {@code own}
-     * changed.
+     * changed. Each edit of a person's that the birth undoes is described into {@code replaced}; housekeeping is
+     * not (a member's first override from its birth, or a copy of the edge's own value 1.3.2 left behind).
      */
-    static boolean reconcile(PropertySet own, Map<Property<?>, Object> birth, Map<Property<?>, Object> inherited) {
+    static boolean reconcile(PropertySet own, Map<Property<?>, Object> birth, Map<Property<?>, Object> inherited,
+                             List<String> replaced) {
         boolean changed = false;
         for (Map.Entry<Property<?>, Object> carried : birth.entrySet()) {
             Property<?> prop = carried.getKey();
             Object value = carried.getValue();
+            if (own.contains(prop) && !value.equals(own.get(prop))) {
+                replaced.add(LABELS.getOrDefault(prop, prop.getName()) + " '" + own.get(prop) + "' -> '" + value + "'");
+            }
             if (value.equals(inherited.get(prop))) {
                 if (own.contains(prop)) {
                     own.remove(prop);

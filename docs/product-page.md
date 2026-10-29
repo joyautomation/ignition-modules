@@ -24,7 +24,7 @@ company and the claims are yours to make. Port it when you are happy with it. Su
 > **There is no second set of tags to maintain.**
 >
 > **Free and open source** · Apache-2.0 ·
-> [Download Mantle 1.3.2 (.modl)](https://github.com/joyautomation/ignition-modules/releases/download/mantle/v1.3.2/Mantle.modl) ·
+> [Download Mantle 1.3.3 (.modl)](https://github.com/joyautomation/ignition-modules/releases/download/mantle/v1.3.3/Mantle.modl) ·
 > [Source on GitHub](https://github.com/joyautomation/ignition-modules)
 >
 > *Commercial support available from Joy Automation.*
@@ -62,6 +62,7 @@ reconnects and gateway restarts. Nothing has to be mirrored into a second tag tr
 > to change one, change it at the edge. Everything the birth does not carry is yours: alarms, scripts,
 > security, scaling and history settings stay exactly as you set them, across rebirths, reconnects and
 > gateway restarts.
+> In the tag editor, a green dot on one of the edge's fields is an edit that lasts until the next birth.
 
 ## Configuration is the risk, so there is almost none
 

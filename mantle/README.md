@@ -33,11 +33,19 @@ JSON; what a person sets in the Designer is stored beside it and wins. The rule 
   "name": "Level",
   "tagType": "AtomicTag",
   "historyEnabled": false,                       <- yours: stays
-  "engUnit": "m",                                <- the next birth says "ft": "ft" comes back
+  "engUnit": "m",                                <- the next birth says "ft": this line goes, "ft" shows through
   "alarms": [{ "name": "High Level", "...": "" }],
   "prg": { "dataType": "Float4", "engUnit": "ft", "historyEnabled": true, "historyProvider": "Core" }
 }
 ```
+
+**Reading the tag editor.** The Designer marks a property set on the tag itself with a green dot, and one it inherits
+with a grey one; on a Sparkplug tag, what it inherits is what the module set from the birth. So a green dot on
+Data Type, Engineering Units, the Engineering Limits or Documentation is an edit that lasts until the node's next
+birth. The birth takes the override away rather than copying over it, so the dot goes grey again, and the gateway
+log names each tag and what was replaced (`[Sparkplug]Plant/Line1/LevelFt: Engineering Units 'm' -> 'ft' from the
+edge's birth`). To change one of those for good, change it at the edge. A green dot on anything else is yours and
+stays.
 
 A UDT that changes at the edge changes here too: a member the type gains appears on every instance with its birth
 value, and the alarms on the other members stay.
