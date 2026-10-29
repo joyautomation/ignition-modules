@@ -24,7 +24,7 @@ company and the claims are yours to make. Port it when you are happy with it. Su
 > **There is no second set of tags to maintain.**
 >
 > **Free and open source** · Apache-2.0 ·
-> [Download Mantle 1.3.0 (.modl)](https://github.com/joyautomation/ignition-modules/releases/download/mantle/v1.3.0/Mantle.modl) ·
+> [Download Mantle 1.3.2 (.modl)](https://github.com/joyautomation/ignition-modules/releases/download/mantle/v1.3.2/Mantle.modl) ·
 > [Source on GitHub](https://github.com/joyautomation/ignition-modules)
 >
 > *Commercial support available from Joy Automation.*
@@ -57,9 +57,11 @@ Turn history off on a tag and it stays off. Metrics the edge flags `is_transient
 so alarms, scaling, scripts, security and history settings go on these tags directly. They survive rebirths,
 reconnects and gateway restarts. Nothing has to be mirrored into a second tag tree to be "managed".
 
-> **Why customization is safe.** Ignition keeps two layers per tag. What Mantle sets is stored under `prg`;
-> what you set in the Designer sits beside it and wins. A rebirth refreshes the module's layer — data type,
-> units, range, the history default — and cannot reach yours.
+> **Why customization is safe.** The edge owns what its birth carries — data type, units, range and
+> documentation — and a rebirth puts those back, because the device is the authority on what it publishes;
+> to change one, change it at the edge. Everything the birth does not carry is yours: alarms, scripts,
+> security, scaling and history settings stay exactly as you set them, across rebirths, reconnects and
+> gateway restarts.
 
 ## Configuration is the risk, so there is almost none
 
