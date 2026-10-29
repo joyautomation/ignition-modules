@@ -65,6 +65,11 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Every Gradle run in this job builds the tag's version, including the ones scripts/dev-up.sh makes
+          # without -P. Without this, dev-up packed web-ui-<default>.jar beside web-ui-<tag>.jar and zipModule
+          # refused ("Library 'web-ui' exists in multiple versions"): 1.3.2's first release run, whose tag no
+          # longer matched the default in build.gradle.kts.
+          echo "ORG_GRADLE_PROJECT_mantleVersion=$version" >> "$GITHUB_ENV"
           echo "Building Mantle $version" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Unit tests and distribution checks
