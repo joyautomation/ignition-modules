@@ -445,6 +445,18 @@ func TestACustomizedTagSurvivesARebirth(t *testing.T) {
 	if len(alarms) != 1 {
 		t.Errorf("alarms = %v after rebirth, want the one that was configured", cfg["alarms"])
 	}
+	// The edge's values come back by the override going away, not by a copy of them sitting in the person's layer,
+	// where the Designer would go on marking units and documentation as changed on this tag (1.3.2 did that).
+	own, err := gw.LocalProperties(edge.TagPath("LevelFt"))
+	must(t, err)
+	for _, p := range own {
+		if p == "engUnit" || p == "documentation" {
+			t.Errorf("%s is still in LevelFt's own layer after rebirth (own layer: %v)", p, own)
+		}
+	}
+	if !slices.Contains(own, "historyEnabled") || !slices.Contains(own, "alarms") {
+		t.Errorf("LevelFt's own layer after rebirth = %v, want the person's historyEnabled and alarms kept", own)
+	}
 	// And the tag is still alive and fed.
 	must(t, edge.Set("LevelSP", 17.0))
 	expectValue(t, edge.TagPath("LevelFt"), 17.0)

@@ -617,11 +617,16 @@ public class ManagedTagSink implements TagSink {
     }
 
     /**
-     * The birth wins over a person's override for what it carries. A person can retype a unit or a description in
-     * the Designer, and their layer then hides the module's; the next birth puts the device's value back, because
-     * the device is the authority on its own units. One read and one save per birth, and nothing is saved when
-     * nothing differs. What a birth does not carry (an alarm, a script, security, a history setting) is not
-     * touched: the save merges, like an edit in the Designer.
+     * The birth wins over a person's override for what it carries, and it wins by taking the override away rather
+     * than by copying the edge's value over it. A copy would sit in the person's layer, and the Designer would go on
+     * marking the property as changed on this tag (its green dot) when nothing about it is the person's any more:
+     * 1.3.2 did exactly that. So a plain tag's override is removed and the module's layer, which define() has just
+     * set from this birth, shows through. A UDT member inherits from its type instead, so it keeps an override only
+     * where the birth really differs from the type, which is all Ignition means by one.
+     * <p>
+     * One read of the tags' own layers and one save per birth, and nothing is saved when nothing differs. What a
+     * birth does not carry (an alarm, a script, security, a history setting) is never touched: the save writes back
+     * the layer it read, less what the edge owns.
      */
     private void refreshProperties() {
         if (refresh.isEmpty()) {
@@ -645,25 +650,34 @@ public class ManagedTagSink implements TagSink {
             List<TagConfiguration> saves = new ArrayList<>();
             for (int from = 0; from < paths.size(); from += CONFIG_BATCH) {
                 List<TagPath> slice = paths.subList(from, Math.min(paths.size(), from + CONFIG_BATCH));
-                List<TagConfigurationModel> current = tagProvider.getTagConfigsAsync(slice, false, false)
+                // localPropsOnly: the person's layer alone, which is what gets written back
+                List<TagConfigurationModel> own = tagProvider.getTagConfigsAsync(slice, false, true)
                     .get(30, TimeUnit.SECONDS);
-                for (TagConfigurationModel model : current) {
-                    if (model.getType() != TagObjectType.AtomicTag || model.getPath() == null) {
+                for (TagConfigurationModel model : own) {
+                    if (model.getPath() == null
+                        || (model.getType() != null && model.getType() != TagObjectType.AtomicTag)) {
                         continue;
                     }
-                    Refresh r = wanted.get(model.getPath().toStringPartial());
+                    String path = model.getPath().toStringPartial();
+                    Refresh r = wanted.get(path);
                     if (r == null) {
                         continue;
                     }
-                    Map<Property<?>, Object> changes = stale(model, r.dataType(), r.info());
-                    if (!changes.isEmpty()) {
-                        saves.add(withChanges(model.getPath(), changes));
+                    Map<Property<?>, Object> birth = carried(r.dataType(), r.info());
+                    Map<Property<?>, Object> inherited = r.dataType() != null
+                        ? birth // a plain tag: the module's layer says what this birth says
+                        : carried(null, typeMemberInfo(path, instances, definedTypes));
+                    if (reconcile(model, birth, inherited)) {
+                        if (model.getType() == null) {
+                            model.setType(TagObjectType.AtomicTag);
+                        }
+                        saves.add(model);
                     }
                 }
             }
             for (int from = 0; from < saves.size(); from += CONFIG_BATCH) {
                 List<TagConfiguration> slice = saves.subList(from, Math.min(saves.size(), from + CONFIG_BATCH));
-                tagProvider.saveTagConfigsAsync(slice, CollisionPolicy.MergeOverwrite).get(60, TimeUnit.SECONDS);
+                tagProvider.saveTagConfigsAsync(slice, CollisionPolicy.Overwrite).get(60, TimeUnit.SECONDS);
             }
             if (!saves.isEmpty()) {
                 logger.info("Put the edge's datatype, units, range or documentation back on {} tags in '{}' that "
@@ -678,33 +692,99 @@ public class ManagedTagSink implements TagSink {
     }
 
     /**
-     * What a birth says about a tag that the tag does not currently say. Only the properties the birth carries
-     * count: a null is "the birth did not say", never "clear it".
+     * What a birth sets on a tag: its datatype (a UDT member's comes from the type, so pass null), units, range and
+     * documentation. A null is "the birth did not say", never "clear it", so it is left out.
      */
-    static Map<Property<?>, Object> stale(PropertySet current, DataType dataType, MetricInfo info) {
-        Map<Property<?>, Object> changes = new LinkedHashMap<>();
-        want(changes, current, WellKnownTagProps.DataType, dataType);
-        want(changes, current, WellKnownTagProps.EngUnit, info.engUnit());
-        want(changes, current, WellKnownTagProps.Documentation, info.documentation());
-        want(changes, current, WellKnownTagProps.EngLow, info.engLow());
-        want(changes, current, WellKnownTagProps.EngHigh, info.engHigh());
-        return changes;
+    static Map<Property<?>, Object> carried(DataType dataType, MetricInfo info) {
+        Map<Property<?>, Object> carried = new LinkedHashMap<>();
+        if (dataType != null) {
+            carried.put(WellKnownTagProps.DataType, dataType);
+        }
+        if (info == null) {
+            return carried;
+        }
+        if (info.engUnit() != null) {
+            carried.put(WellKnownTagProps.EngUnit, info.engUnit());
+        }
+        if (info.documentation() != null) {
+            carried.put(WellKnownTagProps.Documentation, info.documentation());
+        }
+        if (info.engLow() != null) {
+            carried.put(WellKnownTagProps.EngLow, info.engLow());
+        }
+        if (info.engHigh() != null) {
+            carried.put(WellKnownTagProps.EngHigh, info.engHigh());
+        }
+        return carried;
     }
 
-    private static <T> void want(Map<Property<?>, Object> changes, PropertySet current, Property<T> prop, T value) {
-        if (value != null && !value.equals(current.get(prop))) {
-            changes.put(prop, value);
+    /**
+     * Brings a tag's own layer in line with a birth: an override of something the birth carries is dropped where
+     * the tag would inherit the birth's value anyway, and set where it would not. Returns whether {@code own}
+     * changed.
+     */
+    static boolean reconcile(PropertySet own, Map<Property<?>, Object> birth, Map<Property<?>, Object> inherited) {
+        boolean changed = false;
+        for (Map.Entry<Property<?>, Object> carried : birth.entrySet()) {
+            Property<?> prop = carried.getKey();
+            Object value = carried.getValue();
+            if (value.equals(inherited.get(prop))) {
+                if (own.contains(prop)) {
+                    own.remove(prop);
+                    changed = true;
+                }
+            } else if (!own.contains(prop) || !value.equals(own.get(prop))) {
+                set(own, prop, value);
+                changed = true;
+            }
         }
+        return changed;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static TagConfiguration withChanges(TagPath path, Map<Property<?>, Object> changes) {
-        TagConfiguration config = BasicTagConfiguration.createNew(path);
-        config.setType(TagObjectType.AtomicTag);
-        for (Map.Entry<Property<?>, Object> change : changes.entrySet()) {
-            config.set((Property) change.getKey(), change.getValue());
+    private static void set(PropertySet own, Property prop, Object value) {
+        own.set(prop, value);
+    }
+
+    /**
+     * What a UDT member's type says about it, found by walking from the instance it belongs to through any nested
+     * types; null when the member is not one this module built.
+     */
+    static MetricInfo typeMemberInfo(String memberPath, Map<String, String> instances,
+                                     Map<String, List<TypeMember>> types) {
+        for (Map.Entry<String, String> instance : instances.entrySet()) {
+            String prefix = instance.getKey() + "/";
+            if (FLATTENED.equals(instance.getValue()) || !memberPath.startsWith(prefix)) {
+                continue;
+            }
+            String typeName = instance.getValue();
+            String[] segments = memberPath.substring(prefix.length()).split("/");
+            for (int i = 0; i < segments.length; i++) {
+                TypeMember member = memberNamed(types.get(typeName), segments[i]);
+                if (member == null) {
+                    return null;
+                }
+                if (i == segments.length - 1) {
+                    return member.isNested() ? null : member.info();
+                }
+                if (!member.isNested()) {
+                    return null;
+                }
+                typeName = member.nestedTypeRef();
+            }
         }
-        return config;
+        return null;
+    }
+
+    private static TypeMember memberNamed(List<TypeMember> members, String name) {
+        if (members != null) {
+            for (TypeMember member : members) {
+                if (member.name().equals(name)) {
+                    return member;
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean allAtomic(TagProvider tagProvider, List<TagPath> probe) throws Exception {

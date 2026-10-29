@@ -159,6 +159,18 @@ func (g *Gateway) Write(rel string, value any) (string, error) {
 
 // Config returns a tag's effective configuration (module layer merged with
 // the user's).
+// LocalProperties names the properties in a tag's own layer: what a person (or a save) set on the tag itself, and
+// not what the module set. The Designer marks exactly these as changed on the tag.
+func (g *Gateway) LocalProperties(rel string) ([]string, error) {
+	var out struct {
+		Properties []string `json:"properties"`
+	}
+	if err := g.call(map[string]any{"op": "localconfig", "path": g.Path(rel)}, &out); err != nil {
+		return nil, err
+	}
+	return out.Properties, nil
+}
+
 func (g *Gateway) Config(rel string) (map[string]any, error) {
 	var out struct {
 		Configs []map[string]any `json:"configs"`

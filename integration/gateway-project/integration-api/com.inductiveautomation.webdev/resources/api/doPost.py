@@ -153,6 +153,17 @@ def doPost(request, session):
 		configs = system.tag.getConfiguration(body['path'], bool(body.get('recursive', False)))
 		return {'json': {'configs': plain(configs)}}
 
+	if op == 'localconfig':
+		# A tag's own layer alone, without the module's: what the Designer marks as changed on the tag (its green
+		# dot) is exactly what is in here. system.tag.getConfiguration only ever returns the two merged.
+		from com.inductiveautomation.ignition.gateway import IgnitionGateway
+		from com.inductiveautomation.ignition.common.tags.paths.parser import TagPathParser
+		from java.util.concurrent import TimeUnit
+		path = TagPathParser.parse(body['path'])
+		provider = IgnitionGateway.get().getTagManager().getTagProvider(path.getSource())
+		models = provider.getTagConfigsAsync([path], False, True).get(30, TimeUnit.SECONDS)
+		return {'json': {'properties': sorted([str(p.getName()) for p in models[0].getProperties()])}}
+
 	if op == 'configure':
 		# The same call a person's edit ends up as: properties land in the tag's user layer.
 		results = system.tag.configure(body['basePath'], body['tags'], body.get('collisionPolicy', 'm'))
