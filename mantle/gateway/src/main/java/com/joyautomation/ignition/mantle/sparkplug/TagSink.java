@@ -80,6 +80,14 @@ public interface TagSink {
     default void awaitDefinitions() {
     }
 
+    /**
+     * Called once at the end of every birth that {@link #beginBirth} opened, with the same folder, after the
+     * birth's last value (its {@code _meta/Online} included), and also when the birth failed part way. A sink
+     * that holds anything back until a new tag has its first value lets go of it here.
+     */
+    default void endBirth(String folderPath) {
+    }
+
     void update(String path, Object value, Date timestamp, boolean historical);
 
     /** The metric was reported with is_null = true. */

@@ -14,12 +14,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 
 import com.inductiveautomation.ignition.common.config.BasicBoundPropertySet;
 import com.inductiveautomation.ignition.common.config.BoundPropertySet;
 import com.inductiveautomation.ignition.common.config.Property;
 import com.inductiveautomation.ignition.common.config.PropertySet;
 import com.inductiveautomation.ignition.common.model.values.QualityCode;
+import com.inductiveautomation.ignition.common.sqltags.history.InterpolationMode;
 import com.inductiveautomation.ignition.common.sqltags.model.types.DataType;
 import com.inductiveautomation.ignition.common.tags.config.BasicTagConfiguration;
 import com.inductiveautomation.ignition.common.tags.config.CollisionPolicy;
@@ -109,6 +111,16 @@ public class ManagedTagSink implements TagSink {
 
     private record PendingInstance(String path, List<String> members) {
     }
+
+    /**
+     * What each open birth found in its folder before it defined anything, by folder: a tag missing from it is one
+     * this birth creates. Keyed by folder because one provider can take births from several connections at once.
+     */
+    private final Map<String, Map<String, TagObjectType>> births = new ConcurrentHashMap<>();
+    /** new atomic tags, by birth folder, whose module layer leaves history off until the birth's values are in */
+    private final Map<String, Set<String>> heldTags = new ConcurrentHashMap<>();
+    /** members of new UDT instances, by birth folder, whose instance holds history off until the same moment */
+    private final Map<String, Set<String>> heldMembers = new ConcurrentHashMap<>();
 
     /** every tag this birth described, so what the birth carries can be put back over a person's override */
     private final List<Refresh> refresh = new CopyOnWriteArrayList<>();
@@ -253,8 +265,10 @@ public class ManagedTagSink implements TagSink {
     public void beginBirth(String folderPath) {
         Map<String, TagObjectType> present = presentUnder(folderPath);
         if (present == null) {
+            births.remove(folderPath); // unknown, so nothing is treated as new: history goes on at once, as before
             return;
         }
+        births.put(folderPath, present);
         defined.keySet().removeIf(path -> gone(path, folderPath, present, TagObjectType.AtomicTag));
         // a flattened instance is a folder by design, so only its presence matters
         instances.entrySet().removeIf(e -> gone(e.getKey(), folderPath, present,
@@ -396,6 +410,12 @@ public class ManagedTagSink implements TagSink {
             TagConfiguration instance = BasicTagConfiguration.createNew(TagPathParser.parse(providerName, path));
             instance.setType(TagObjectType.UdtInstance);
             instance.set(WellKnownTagProps.TypeId, typeName);
+            // The members of a new instance start as the same Good null as a new tag (see define()), so the
+            // instance itself holds their history off until the birth's values are in. endBirth() takes the
+            // hold away, and the members go back to what the type says.
+            String heldBy = current == null && historize && historian() != null ? birthOf(path) : null;
+            List<String> held = heldBy == null ? List.of() : historizedLeaves(path, typeName, definedTypes);
+            holdHistory(instance, path, held);
             QualityCode result = save(instance);
             if (result != null && result.isNotGood()) {
                 logger.warn("Could not create UDT instance {} of '{}': {}; it stays a folder of tags",
@@ -404,6 +424,9 @@ public class ManagedTagSink implements TagSink {
                 return false;
             }
             instances.put(path, typeName);
+            if (!held.isEmpty()) {
+                heldMembers.computeIfAbsent(heldBy, f -> ConcurrentHashMap.newKeySet()).addAll(held);
+            }
             // Ignition builds the members from the type after save() returns, so the birth's values for them
             // have the same race as a new atomic tag: awaitDefinitions() waits for these too
             List<String> members = memberLeaves(path, typeName, definedTypes);
@@ -424,12 +447,19 @@ public class ManagedTagSink implements TagSink {
      */
     static List<String> memberLeaves(String path, String typeName, Map<String, List<TypeMember>> types) {
         List<String> leaves = new ArrayList<>();
-        collectLeaves(path, typeName, types, leaves, new HashSet<>());
+        collectLeaves(path, typeName, types, m -> true, leaves, new HashSet<>());
+        return leaves;
+    }
+
+    /** The same, only the members the type records history for. */
+    static List<String> historizedLeaves(String path, String typeName, Map<String, List<TypeMember>> types) {
+        List<String> leaves = new ArrayList<>();
+        collectLeaves(path, typeName, types, m -> m.info() != null && m.info().historize(), leaves, new HashSet<>());
         return leaves;
     }
 
     private static void collectLeaves(String path, String typeName, Map<String, List<TypeMember>> types,
-                                      List<String> into, Set<String> seen) {
+                                      Predicate<TypeMember> wanted, List<String> into, Set<String> seen) {
         List<TypeMember> members = types.get(typeName);
         if (members == null || !seen.add(typeName)) {
             return; // unknown, or a type that contains itself: Ignition would refuse it anyway
@@ -437,12 +467,180 @@ public class ManagedTagSink implements TagSink {
         for (TypeMember member : members) {
             String memberPath = path + "/" + member.name();
             if (member.isNested()) {
-                collectLeaves(memberPath, member.nestedTypeRef(), types, into, seen);
-            } else {
+                collectLeaves(memberPath, member.nestedTypeRef(), types, wanted, into, seen);
+            } else if (wanted.test(member)) {
                 into.add(memberPath);
             }
         }
         seen.remove(typeName);
+    }
+
+    /**
+     * An override of history off on each of {@code leaves} (full paths of the instance's atomic members), through
+     * nested instances: the shape the Designer saves a member override in. A direct member is named by its full
+     * path, as defineType() names a type's members; anything below a nested instance by its name alone. A full
+     * path there is appended to the nested instance's own ("…/S1/Drive/Plant/Line1/S1/Drive"), the save fails
+     * with Bad_Unsupported and the instance falls back to a folder: seen on 8.3.9 with a nested template.
+     */
+    private void holdHistory(TagConfiguration instance, String instancePath, List<String> leaves) {
+        Map<String, TagConfiguration> nested = new HashMap<>();
+        for (String leaf : leaves) {
+            TagConfiguration parent = instance;
+            String parentPath = instancePath;
+            String[] segments = leaf.substring(instancePath.length() + 1).split("/");
+            for (int i = 0; i < segments.length - 1; i++) {
+                String childPath = parentPath + "/" + segments[i];
+                TagConfiguration owner = parent;
+                String name = segments[i];
+                parent = nested.computeIfAbsent(childPath, p -> {
+                    TagConfiguration child = BasicTagConfiguration.createNew(parse(name));
+                    child.setType(TagObjectType.UdtInstance);
+                    owner.addChild(child);
+                    return child;
+                });
+                parentPath = childPath;
+            }
+            TagConfiguration member = BasicTagConfiguration.createNew(
+                parse(segments.length == 1 ? leaf : segments[segments.length - 1]));
+            member.setType(TagObjectType.AtomicTag);
+            member.set(TagHistoryProps.HistoryEnabled, false);
+            parent.addChild(member);
+        }
+    }
+
+    private TagPath parse(String path) {
+        try {
+            return TagPathParser.parse(providerName, path);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(path, e);
+        }
+    }
+
+    /**
+     * The birth that began with {@link #beginBirth} on this folder has put its last value in, so the new tags and
+     * new UDT members it held history back on get it now. Switching history on stores the tag's current value, its
+     * birth value, with the birth's timestamp; the Good null the gateway created the tag with never reaches the
+     * historian. Waits until the gateway has applied it, so a value that follows the birth is not missed either.
+     */
+    @Override
+    public void endBirth(String folderPath) {
+        births.remove(folderPath);
+        Set<String> tags = heldTags.remove(folderPath);
+        Set<String> members = heldMembers.remove(folderPath);
+        List<String> released = new ArrayList<>();
+        try {
+            if (tags != null) {
+                released.addAll(releaseTags(tags));
+            }
+            if (members != null) {
+                released.addAll(releaseMembers(members));
+            }
+            awaitHistory(released);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            logger.warn("Could not switch history on for {} new tags in '{}' under {}; they record from their next "
+                + "birth", (tags == null ? 0 : tags.size()) + (members == null ? 0 : members.size()), providerName,
+                folderPath, e);
+        }
+    }
+
+    /** The module's layer again, history included this time. */
+    private List<String> releaseTags(Set<String> paths) {
+        List<String> released = new ArrayList<>();
+        for (String path : paths) {
+            Definition definition = defined.get(path);
+            if (definition == null || definition.historian() == null) {
+                continue; // deleted since, or no historian to record into
+            }
+            provider.configureTag(path,
+                definitionProps(definition.dataType(), definition.info(), definition.historian()));
+            released.add(path);
+        }
+        return released;
+    }
+
+    /** Takes the instance's history-off override away from each member, which then records as its type says. */
+    private List<String> releaseMembers(Set<String> paths) throws Exception {
+        TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+        if (tagProvider == null) {
+            return List.of();
+        }
+        List<TagPath> tagPaths = new ArrayList<>();
+        for (String path : paths) {
+            tagPaths.add(parse(path));
+        }
+        List<TagConfiguration> saves = new ArrayList<>();
+        List<String> released = new ArrayList<>();
+        for (int from = 0; from < tagPaths.size(); from += CONFIG_BATCH) {
+            List<TagPath> slice = tagPaths.subList(from, Math.min(tagPaths.size(), from + CONFIG_BATCH));
+            for (TagConfigurationModel own : tagProvider.getTagConfigsAsync(slice, false, true)
+                .get(30, TimeUnit.SECONDS)) {
+                if (own.getPath() == null || !releaseHold(own)) {
+                    continue;
+                }
+                if (own.getType() == null) {
+                    own.setType(TagObjectType.AtomicTag);
+                }
+                saves.add(own);
+                released.add(own.getPath().toStringPartial());
+            }
+        }
+        for (int from = 0; from < saves.size(); from += CONFIG_BATCH) {
+            List<TagConfiguration> slice = saves.subList(from, Math.min(saves.size(), from + CONFIG_BATCH));
+            tagProvider.saveTagConfigsAsync(slice, CollisionPolicy.Overwrite).get(60, TimeUnit.SECONDS);
+        }
+        return released;
+    }
+
+    /** Drops the history-off override defineInstance() put on a member; anything else on it stays. */
+    static boolean releaseHold(PropertySet own) {
+        if (own.contains(TagHistoryProps.HistoryEnabled)
+            && Boolean.FALSE.equals(own.get(TagHistoryProps.HistoryEnabled))) {
+            own.remove(TagHistoryProps.HistoryEnabled);
+            return true;
+        }
+        return false;
+    }
+
+    private void awaitHistory(List<String> paths) throws Exception {
+        if (paths.isEmpty()) {
+            return;
+        }
+        TagProvider tagProvider = context.getTagManager().getTagProvider(providerName);
+        if (tagProvider == null) {
+            return;
+        }
+        List<TagPath> waiting = new ArrayList<>();
+        for (String path : paths) {
+            waiting.add(parse(path));
+        }
+        long deadline = System.currentTimeMillis() + DEFINITION_TIMEOUT_MS;
+        while (!waiting.isEmpty()) {
+            List<TagPath> still = new ArrayList<>();
+            for (int from = 0; from < waiting.size(); from += CONFIG_BATCH) {
+                List<TagPath> slice = waiting.subList(from, Math.min(waiting.size(), from + CONFIG_BATCH));
+                List<TagConfigurationModel> configs = tagProvider.getTagConfigsAsync(slice, false, false)
+                    .get(10, TimeUnit.SECONDS);
+                for (int i = 0; i < configs.size() && i < slice.size(); i++) {
+                    TagConfigurationModel config = configs.get(i);
+                    boolean gone = config.getType() == null || config.getType() == TagObjectType.Unknown;
+                    if (!gone && !Boolean.TRUE.equals(config.get(TagHistoryProps.HistoryEnabled))) {
+                        still.add(slice.get(i));
+                    }
+                }
+            }
+            waiting = still;
+            if (waiting.isEmpty()) {
+                break;
+            }
+            if (System.currentTimeMillis() > deadline) {
+                logger.warn("Gave up waiting for history to come on for {} new tags in '{}' (first: {}); values "
+                    + "before it does are not recorded", waiting.size(), providerName, waiting.get(0));
+                break;
+            }
+            Thread.sleep(20);
+        }
     }
 
     /** The tag object type at a path today, or null when nothing is there. */
@@ -498,14 +696,53 @@ public class ManagedTagSink implements TagSink {
             allowWrites(path);
         }
 
+        // A tag the gateway is about to create starts life as a null of Good quality (MemoryTagPersistenceState
+        // falls through to `new BasicQualifiedValue(null)`), and a historian already attached files that null as
+        // a 0, a false or an empty string a few ms before the birth value: a value the edge never sent. So a new
+        // tag is created with history off, and endBirth() switches it on once the birth's value is the tag's
+        // value; switching history on stores the current value with its own timestamp, so nothing is lost.
+        String heldBy = previous == null && definition.historian() != null ? createdBy(path) : null;
+        if (heldBy != null) {
+            heldTags.computeIfAbsent(heldBy, f -> ConcurrentHashMap.newKeySet()).add(path);
+        }
+        provider.configureTag(path, definitionProps(dataType, info, heldBy == null ? definition.historian() : null));
+    }
+
+    /** The module's whole layer for a tag: configureTag replaces it, so every call carries all of it. */
+    private static BoundPropertySet definitionProps(DataType dataType, MetricInfo info, String historian) {
         BoundPropertySet props = new BasicBoundPropertySet();
         props.set(WellKnownTagProps.DataType, dataType);
-        applyMetadata(props, info);
-        provider.configureTag(path, props);
+        applyMetadata(props, info, historian);
+        return props;
+    }
+
+    /** The open birth that is creating this tag (it was not in the birth's folder when the birth began), or null. */
+    private String createdBy(String path) {
+        for (Map.Entry<String, Map<String, TagObjectType>> birth : births.entrySet()) {
+            if (gone(path, birth.getKey(), birth.getValue(), null)) {
+                return birth.getKey();
+            }
+        }
+        return null;
+    }
+
+    /** The open birth whose folder holds this path, or null. */
+    private String birthOf(String path) {
+        for (String folder : births.keySet()) {
+            if (path.startsWith(folder + "/")) {
+                return folder;
+            }
+        }
+        return null;
     }
 
     /** Units, range, documentation and the history default — everything a birth says about a metric. */
     private void applyMetadata(BoundPropertySet props, MetricInfo info) {
+        applyMetadata(props, info, historize && info.historize() ? historian() : null);
+    }
+
+    /** As above, with history defaulted on into {@code historian}, or left alone when that is null. */
+    private static void applyMetadata(BoundPropertySet props, MetricInfo info, String historian) {
         if (info.engUnit() != null) {
             props.set(WellKnownTagProps.EngUnit, info.engUnit());
         }
@@ -518,18 +755,29 @@ public class ManagedTagSink implements TagSink {
         if (info.engHigh() != null) {
             props.set(WellKnownTagProps.EngHigh, info.engHigh());
         }
-        if (historize && info.historize()) {
-            String historian = historian();
-            if (historian != null) {
-                props.set(TagHistoryProps.HistoryEnabled, true);
-                props.set(TagHistoryProps.HistoryProvider, historian);
-                // Ignition's default is at most one sample a second. The edge has already decided what is worth
-                // reporting (its RBE deadbands), and a store-and-forward flush arrives far faster than that, so
-                // store what we are told. Like everything else here, a user can override it per tag.
-                props.set(TagHistoryProps.HistoryTimeDeadband, 0);
-                props.set(TagHistoryProps.HistoryTimeDeadbandUnits, TimeUnits.MS);
-            }
+        if (historian != null) {
+            historyDefaults(props, historian);
         }
+    }
+
+    /**
+     * History on, into {@code historian}, storing what the edge reports when it reports it. These go in the
+     * module's layer like everything else here, so a person's history setting on a tag (in the Designer, or on a
+     * UDT member) still wins over any of them.
+     */
+    static void historyDefaults(BoundPropertySet props, String historian) {
+        props.set(TagHistoryProps.HistoryEnabled, true);
+        props.set(TagHistoryProps.HistoryProvider, historian);
+        // Ignition's default is at most one sample a second. The edge has already decided what is worth reporting
+        // (its RBE deadbands), and a store-and-forward flush arrives far faster than that, so store what we are
+        // told. Like everything else here, a user can override it per tag.
+        props.set(TagHistoryProps.HistoryTimeDeadband, 0);
+        props.set(TagHistoryProps.HistoryTimeDeadbandUnits, TimeUnits.MS);
+        // For the same reason, Discrete rather than the default Auto, which is Analog for a float: Analog
+        // compression holds each sample back until the next one shows whether it was on a straight line, so a
+        // setpoint written once never reached the historian (LevelSP 10 -> 18 left the trend at 10, 2026-10-29).
+        // Discrete stores each value as it arrives.
+        props.set(TagHistoryProps.HistoricalDeadbandStyle, InterpolationMode.Discrete);
     }
 
     /**

@@ -297,12 +297,16 @@ public class HostState {
             ns.bdSeq = bd;
         }
         registerAliases(ns, "", p.getMetrics());
-        int count = applyBirth(ns, "", p);
-        ns.birthMs = ts.getTime();
-        ns.metrics = count;
-        sink.update(metaPath(ns, "", "Online"), true, ts, false);
-        sink.update(metaPath(ns, "", "Last Birth"), ts, ts, false);
-        logger.info("Node birth {}/{} bdSeq={} metrics={}", ns.key.group(), ns.key.edge(), ns.bdSeq, count);
+        try {
+            int count = applyBirth(ns, "", p);
+            ns.birthMs = ts.getTime();
+            ns.metrics = count;
+            sink.update(metaPath(ns, "", "Online"), true, ts, false);
+            sink.update(metaPath(ns, "", "Last Birth"), ts, ts, false);
+            logger.info("Node birth {}/{} bdSeq={} metrics={}", ns.key.group(), ns.key.edge(), ns.bdSeq, count);
+        } finally {
+            sink.endBirth(birthFolder(ns, "")); // after Online too: it is one of the birth's values
+        }
     }
 
     private void applyDBirth(NodeState ns, String device, SparkplugBPayload p) {
@@ -310,18 +314,26 @@ public class HostState {
         dev.online = true;
         Date ts = payloadTime(p);
         registerAliases(ns, device, p.getMetrics());
-        int count = applyBirth(ns, device, p);
-        dev.birthMs = ts.getTime();
-        dev.metrics = count;
-        sink.update(metaPath(ns, device, "Online"), true, ts, false);
-        sink.update(metaPath(ns, device, "Last Birth"), ts, ts, false);
-        logger.info("Device birth {}/{}/{} metrics={}", ns.key.group(), ns.key.edge(), device, count);
+        try {
+            int count = applyBirth(ns, device, p);
+            dev.birthMs = ts.getTime();
+            dev.metrics = count;
+            sink.update(metaPath(ns, device, "Online"), true, ts, false);
+            sink.update(metaPath(ns, device, "Last Birth"), ts, ts, false);
+            logger.info("Device birth {}/{}/{} metrics={}", ns.key.group(), ns.key.edge(), device, count);
+        } finally {
+            sink.endBirth(birthFolder(ns, device));
+        }
+    }
+
+    private static String birthFolder(NodeState ns, String device) {
+        return device.isEmpty() ? TagPaths.node(ns.key.group(), ns.key.edge())
+            : TagPaths.device(ns.key.group(), ns.key.edge(), device);
     }
 
     /** Shape first, then values: see {@link TagSink#awaitDefinitions()}. */
     private int applyBirth(NodeState ns, String device, SparkplugBPayload p) {
-        sink.beginBirth(device.isEmpty() ? TagPaths.node(ns.key.group(), ns.key.edge())
-            : TagPaths.device(ns.key.group(), ns.key.edge(), device));
+        sink.beginBirth(birthFolder(ns, device));
         defineMeta(ns, device);
         harvestTypes(ns, p.getMetrics());
         applyMetrics(ns, device, p, Pass.DEFINE);

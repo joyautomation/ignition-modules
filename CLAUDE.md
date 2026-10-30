@@ -230,7 +230,16 @@ GitHub release. CI is path-filtered per module. See `README.md`, `mantle/README.
 - **A tag that does not exist yet reads back `Good` with a nil value and the current time.** An integration
   test that waits for "Good" therefore passes instantly, before anything has published. Wait for a value of
   the right *type* (`v.Float()`), not for quality.
-- Ignition compresses analog history: a linear ramp is stored as two points. Test history with a zigzag.
+- Ignition compresses analog history: a linear ramp is stored as two points, and a sample is held until the next
+  one arrives. Mantle's tags are Discrete since 1.3.4 (`ManagedTagSink.historyDefaults`), but a tag someone set
+  back to Analog compresses again, so test history with a zigzag anyway.
+- **A new managed tag starts life as a null of Good quality** (`MemoryTagPersistenceState.onInitialize` falls
+  through to `new BasicQualifiedValue(null)`), and a historian already attached stores it as 0, false or "".
+  Only a non-Good first value is skipped by the historian's compressors. Mantle holds history off on new tags
+  until `endBirth`; a gateway restart can still produce one (pre-existing, intermittent).
+- **The dev stack can have two connections feeding `[Sparkplug]`** (`plant` from the im12 rig and `dev-broker`
+  from `dev-up.sh`), and both birth every node on mosquitto into it: two births of one folder racing in one sink,
+  which CI never sees. Unseed down to one before reading history closely.
 - A test that passes suspiciously fast deserves the same look as one that fails; everything local really is
   that fast (a Nautilus edge births in ~100 ms, a SIGKILL's will arrives in ~3 ms).
 

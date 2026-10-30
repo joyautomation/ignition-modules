@@ -10,9 +10,12 @@ import java.util.Map;
 
 import com.inductiveautomation.ignition.common.config.BasicBoundPropertySet;
 import com.inductiveautomation.ignition.common.config.Property;
+import com.inductiveautomation.ignition.common.sqltags.history.InterpolationMode;
 import com.inductiveautomation.ignition.common.sqltags.model.types.DataType;
+import com.inductiveautomation.ignition.common.tags.config.properties.TagHistoryProps;
 import com.inductiveautomation.ignition.common.tags.config.properties.WellKnownTagProps;
 import com.inductiveautomation.ignition.common.tags.config.types.TagObjectType;
+import com.inductiveautomation.ignition.common.util.TimeUnits;
 import com.joyautomation.ignition.mantle.sparkplug.TagSink.MetricInfo;
 import com.joyautomation.ignition.mantle.sparkplug.TagSink.TypeMember;
 import org.eclipse.tahu.message.model.MetricDataType;
@@ -178,5 +181,58 @@ class ManagedTagSinkTest {
         assertEquals(torque, ManagedTagSink.typeMemberInfo("Plant/Line1/P101/Drive/Torque", instances, types));
         assertEquals(null, ManagedTagSink.typeMemberInfo("Plant/Line1/P101/Drive/Nope", instances, types));
         assertEquals(null, ManagedTagSink.typeMemberInfo("Plant/Line1/LevelFt", instances, types));
+    }
+
+    // ── history: what is stored, and from when ─────────────────────────────────
+
+    // A setpoint written once (LevelSP 10 -> 18) never reached the trend: Auto is Analog for a float, and Analog
+    // compression files a sample only when the next one arrives. The im12 rig, 2026-10-29.
+    @Test
+    void historyStoresEachReportedValueAsItArrives() {
+        BasicBoundPropertySet props = new BasicBoundPropertySet();
+        ManagedTagSink.historyDefaults(props, "Core");
+        assertEquals(true, props.get(TagHistoryProps.HistoryEnabled));
+        assertEquals("Core", props.get(TagHistoryProps.HistoryProvider));
+        assertEquals(InterpolationMode.Discrete, props.get(TagHistoryProps.HistoricalDeadbandStyle));
+        assertEquals(0, props.get(TagHistoryProps.HistoryTimeDeadband));
+        assertEquals(TimeUnits.MS, props.get(TagHistoryProps.HistoryTimeDeadbandUnits));
+    }
+
+    // A tag missing from its folder when the birth began is one this birth creates, so its history waits for its
+    // birth value. One that was there already, or another folder's, records as it always did.
+    @Test
+    void onlyATagThisBirthCreatesWaitsForItsValueBeforeRecording() {
+        Map<String, TagObjectType> before = Map.of(NODE, TagObjectType.Folder,
+            "Plant/Line1/LevelFt", TagObjectType.AtomicTag);
+        assertTrue(ManagedTagSink.gone("Plant/Line1/LevelSP", NODE, before, null));
+        assertFalse(ManagedTagSink.gone("Plant/Line1/LevelFt", NODE, before, null));
+        assertFalse(ManagedTagSink.gone("Plant/Line2/LevelSP", NODE, before, null));
+    }
+
+    @Test
+    void aNewInstanceHoldsHistoryOnlyOnMembersItsTypeRecords() {
+        MetricInfo transientInfo = new MetricInfo(null, null, null, null, false, true);
+        Map<String, List<TypeMember>> types = Map.of(
+            "Skid", List.of(atomic("Enable"), new TypeMember("Noise", MetricDataType.Float, null, transientInfo),
+                new TypeMember("Pump", MetricDataType.Template, "Motor", MetricInfo.DEFAULT)),
+            "Motor", List.of(atomic("Fault")));
+        assertEquals(List.of("S1/Enable", "S1/Pump/Fault"), ManagedTagSink.historizedLeaves("S1", "Skid", types));
+    }
+
+    @Test
+    void releasingAHoldTakesOnlyTheHold() {
+        BasicBoundPropertySet own = new BasicBoundPropertySet();
+        own.set(TagHistoryProps.HistoryEnabled, false);
+        own.set(WellKnownTagProps.Documentation, "Shaft speed");
+        assertTrue(ManagedTagSink.releaseHold(own));
+        assertFalse(own.contains(TagHistoryProps.HistoryEnabled));
+        assertEquals("Shaft speed", own.get(WellKnownTagProps.Documentation));
+
+        BasicBoundPropertySet none = new BasicBoundPropertySet();
+        assertFalse(ManagedTagSink.releaseHold(none), "nothing held, nothing to save");
+        BasicBoundPropertySet on = new BasicBoundPropertySet();
+        on.set(TagHistoryProps.HistoryEnabled, true);
+        assertFalse(ManagedTagSink.releaseHold(on));
+        assertTrue(on.contains(TagHistoryProps.HistoryEnabled));
     }
 }

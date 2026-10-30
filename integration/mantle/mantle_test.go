@@ -604,6 +604,87 @@ func TestEveryReportedChangeIsStoredInTheHistorian(t *testing.T) {
 	})
 }
 
+// A setpoint written once has to reach the historian when it is written, not when it next changes. Ignition's
+// default deadband style (Auto) is Analog for a float, and Analog compression holds each sample back until the
+// next one shows whether it was on a line: on the im12 rig (2026-10-29) LevelSP written 15 was stored only once
+// 16 was written, and 10 -> 18 left the trend at 10 while the Tag Browser said 18. One write, then nothing.
+func TestASetpointWrittenOnceIsStoredWhenItIsWritten(t *testing.T) {
+	edge := startEdge(t)
+	for _, tag := range []string{"LevelSP", "P101/SpeedSP"} {
+		if style := mustConfig(t, edge.TagPath(tag))["historicalDeadbandStyle"]; style != "Discrete" {
+			t.Errorf("%s historicalDeadbandStyle = %v, want Discrete", tag, style)
+		}
+	}
+	time.Sleep(time.Second) // the birth's own sample stays out of the window
+	start := time.Now()
+
+	// through Ignition, as the Tag Browser does it: a write, an NCMD, and the edge's NDATA back
+	if q, err := gw.Write(edge.TagPath("LevelSP"), 18.0); err != nil || !strings.HasPrefix(q, "Good") {
+		t.Fatalf("write LevelSP: %s %v", q, err)
+	}
+	expectValue(t, edge.TagPath("LevelSP"), 18.0)
+
+	eventually(t, 15*time.Second, func() error {
+		rows, err := gw.History(edge.TagPath("LevelSP"), start, time.Now().Add(time.Second))
+		if err != nil {
+			return err
+		}
+		// 192 is a live Good sample. A 203 (Good_Backfill) copy of the value can turn up as well when a second
+		// connection feeds the same provider (the im12 rig's `plant` beside dev-broker), and it passed this check
+		// once on 1.3.3, which stored nothing live until the next change. Only the live sample counts.
+		for _, r := range rows {
+			if same(r.Value, 18.0) && r.Quality == "192" {
+				t.Logf("LevelSP history since the write: %v", rows)
+				return nil
+			}
+		}
+		return fmt.Errorf("LevelSP reads 18 but history since the write holds %v", rows)
+	})
+}
+
+// A new tag's history starts with the edge's birth value. The gateway creates a tag as a null of Good quality,
+// and a historian already attached filed that null as 0 (0.0, false, an empty string) a few ms before the birth
+// value of every tag: a value the edge never sent, and a dip to zero at the start of every trend. Nothing changes
+// a value here, so everything stored has to be what the birth said.
+func TestANewTagsHistoryStartsWithItsBirthValue(t *testing.T) {
+	start := time.Now()
+	edge := startEdge(t)
+
+	// The Core historian hands booleans back as 0 and 1.
+	births := map[string]any{
+		"LevelSP": 10.0, "LevelFt": 10.0, "Mode": "IDLE", "CountEnable": 0.0, "Counter": 0.0,
+		"P101/Running": 0.0, "P101/Speed": 0.0, "P101/Starts": 0.0, "_meta/Online": 1.0,
+	}
+	var tags []string
+	for tag := range births {
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+
+	// the birth value lands
+	history := map[string][]harness.HistoryRow{}
+	eventually(t, 20*time.Second, func() error {
+		for _, tag := range tags {
+			rows, err := gw.History(edge.TagPath(tag), start, time.Now().Add(time.Second))
+			if err != nil {
+				return err
+			}
+			if len(rows) == 0 {
+				return fmt.Errorf("%s has nothing in history since its birth", tag)
+			}
+			history[tag] = rows
+		}
+		return nil
+	})
+	// ...and it is all there is
+	for _, tag := range tags {
+		rows := history[tag]
+		if len(rows) != 1 || !same(rows[0].Value, births[tag]) {
+			t.Errorf("%s history since its birth is %v; want only the birth value %v", tag, rows, births[tag])
+		}
+	}
+}
+
 // ── deaths ───────────────────────────────────────────────────────────────
 
 func TestAnOrderlyShutdownMakesTagsStaleButKeepsTheirValues(t *testing.T) {

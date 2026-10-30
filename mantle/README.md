@@ -160,9 +160,19 @@ moving the live value, which is how a store-and-forward flush fills in an outage
 has really built them, and only then pushes values. Otherwise a value that reports only on change can be wiped by
 the tag's own initialization and sit at null until the next rebirth.
 
-**History** is enabled with no minimum time between samples (Ignition's default is one a second): the edge's
-report-by-exception has already decided what is worth storing. Analog compression still applies, so a steady ramp
-is stored as its endpoints.
+**History** is enabled with no minimum time between samples (Ignition's default is one a second) and a Discrete
+deadband style (Ignition's default, Auto, is Analog for a float): the edge's report-by-exception has already decided
+what is worth storing, so each value is stored when it arrives. Under Analog compression a sample waits for the next
+one, so a setpoint written once never reached the trend (1.3.3 and earlier). These are defaults in the module's
+layer; a history setting made in the Designer wins. The first birth after an upgrade puts them on existing tags.
+
+**A new tag's history starts with its birth value.** The gateway creates a tag as a null of Good quality, and a
+historian already attached stores that null as 0 (or false, or an empty string) a few ms before the birth value.
+So a tag a birth creates is created with history off, and history is switched on once the birth's values are in;
+switching it on stores the current value with its own timestamp. A new UDT instance holds its members' history off
+the same way. Not covered: a member a changed template adds to existing instances, and a gateway restart, which
+sometimes (2 of 6 restarts on 1.3.3, 1 of 4 on 1.3.4) stores the same Good null for existing tags just before the
+rebirth value.
 
 **Status tags** sit in `_meta` beside each node's and device's tags: `Online` (historized, the natural parent
 for "site offline" alarms) and `Last Birth`.

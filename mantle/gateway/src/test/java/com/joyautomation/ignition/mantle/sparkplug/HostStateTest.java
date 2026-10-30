@@ -75,6 +75,22 @@ class HostStateTest {
         assertTrue(firstUpdate > await, "no value is sent until the sink says the tags are ready: " + sink.events);
     }
 
+    // The sink holds history back on the tags a birth creates until their birth values are in, so the gateway's own
+    // initial null is never recorded. Online is the birth's last value, so the birth ends after it.
+    @Test
+    void aBirthEndsAfterItsLastValueOnlineIncluded() throws Exception {
+        nbirthWith(1, metric("A", null, MetricDataType.Int32, 1), metric("B", null, MetricDataType.Int32, 2));
+        send(DEVICE, "DBIRTH", 1, false, metric("Tank/Level", 7L, MetricDataType.Float, 42.5f));
+
+        int nodeEnd = sink.events.indexOf("end Plant/Edge1");
+        assertTrue(nodeEnd > sink.events.indexOf("update Plant/Edge1/B"), sink.events.toString());
+        assertTrue(nodeEnd > sink.events.indexOf("update Plant/Edge1/_meta/Online"), sink.events.toString());
+        int deviceEnd = sink.events.indexOf("end Plant/Edge1/PLC1");
+        assertTrue(deviceEnd > sink.events.indexOf("update Plant/Edge1/PLC1/Tank/Level"), sink.events.toString());
+        assertTrue(deviceEnd > sink.events.lastIndexOf("update Plant/Edge1/PLC1/_meta/Online"), sink.events.toString());
+        assertEquals(1, sink.events.stream().filter("end Plant/Edge1"::equals).count());
+    }
+
     @Test
     void everyBirthOpensWithItsFolderSoTheSinkCanCheckWhatWasDeleted() throws Exception {
         nbirth(1);
@@ -371,6 +387,11 @@ class HostStateTest {
         @Override
         public void beginBirth(String folderPath) {
             events.add("begin " + folderPath);
+        }
+
+        @Override
+        public void endBirth(String folderPath) {
+            events.add("end " + folderPath);
         }
 
         @Override

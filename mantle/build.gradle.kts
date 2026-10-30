@@ -10,7 +10,7 @@ val sdkVersion by extra("8.3.9")
 // 10.3.9, Perspective 3.3.9 against 8.3.9). The first digit is ours; the last is our patch number.
 //
 // A release overrides it from the tag: -PmantleVersion=1.3.2, which .github/workflows/release.yml passes.
-val mantleVersion: String = (findProperty("mantleVersion") as String?) ?: "1.3.3"
+val mantleVersion: String = (findProperty("mantleVersion") as String?) ?: "1.3.4"
 
 allprojects {
     version = mantleVersion
