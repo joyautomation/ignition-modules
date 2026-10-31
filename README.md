@@ -1,7 +1,10 @@
 # Ignition modules
 
+[![CI](https://github.com/joyautomation/ignition-modules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/joyautomation/ignition-modules/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Modules for Inductive Automation's Ignition (8.3+), built to carry
-[Nautilus](../nautilus) into plants that already run Ignition.
+[Nautilus](https://github.com/joyautomation/nautilus) into plants that already run Ignition.
 
 | | |
 |---|---|
